@@ -1,0 +1,106 @@
+=============================================================
+         RAID DEPOLAMA ve DOCKER YÖNETİM REHBERİ
+         Antigravity AI tarafından oluşturuldu
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║              MEVCUT DEPOLAMA DURUMU                       ║
+╚═══════════════════════════════════════════════════════════╝
+
+DOCKER DESKTOP:
+  Toplam: 31.43 GB
+  Geri Kazanılabilir: 28.87 GB (%91)
+  Build Cache: 8.4 GB (5 GB kazanılabilir)
+
+WINDOWS TEMP:
+  Boyut: 2.47 GB
+  Dosya Sayısı: 775
+
+DISK LIMITI: 1006.85 GB
+KULLANILAN: 33.82 GB
+
+=============================================================
+               DOCKER TEMİZLİK KOMUTLARI
+=============================================================
+
+# Kullanılmayan tüm verileri temizle
+docker system prune -a --volumes
+
+# Sadece eski imajları temizle
+docker image prune -a
+
+# Sadece durmuş konteynerleri temizle
+docker container prune
+
+# Build cache temizle
+docker builder prune
+
+=============================================================
+         DOCKER VHDX KONUMUNU DEĞİŞTİRME
+=============================================================
+
+Docker Desktop data'yı harici diske taşımak için:
+
+1. Docker Desktop > Settings (Dişli İkonu)
+2. Resources > Advanced
+3. "Disk image location" yanındaki Browse butonuna tıkla
+4. Harici diskte yeni klasör seç (örn: D:\Docker\data)
+5. Apply & Restart
+
+=============================================================
+            ZimaOS RAID DEPOLAMA YÖNETİMİ
+=============================================================
+
+HARİCİ DİSKİ ZimaOS DEPOLAMA OLARAK EKLEMEK:
+
+1. ZimaOS Web Arayüzü: http://192.168.1.43
+2. Settings > Storage
+3. Harici diski seç
+4. "Format / Initialize for ZimaOS" tıkla
+5. Disk /DATA altına monte edilir
+
+VERİ TAŞIMA:
+
+1. Files uygulamasını aç
+2. Taşınacak klasöre sağ tıkla
+3. "Import and Migration" seç
+4. Hedef disk olarak harici diski seç
+
+OLLAMA MODEL DİZİNİ TAŞIMA:
+
+# ZimaOS terminalinde (http://192.168.1.43:2222):
+docker stop ollama
+docker rm ollama
+docker run -d --name ollama --restart always \
+  -p 11434:11434 \
+  -v /media/WDElements/ollama:/root/.ollama \
+  ollama/ollama:0.9.5
+
+=============================================================
+               MEVCUT DOCKER İMAJLARI
+=============================================================
+
+İmaj                              Boyut     Durum
+---------------------------------|---------|--------
+ollama/ollama                     6.13 GB   Aktif
+ghcr.io/open-webui/open-webui     6.13 GB   Aktif
+antygravtygoogleid-app            3.08 GB   Aktif
+mintplexlabs/anything-llm         4.01 GB
+mcp/playwright                    1.39 GB
+grafana/grafana                   994 MB
+prom/prometheus                   515 MB
+mcp/dockerhub                     427 MB
+
+=============================================================
+                  ÖNERİLER
+=============================================================
+
+1. docker system prune -a çalıştırarak ~28GB kazanın
+2. Temp klasörünü temizleyerek ~2.5GB kazanın
+3. Docker disk konumunu harici diske taşıyın
+4. ZimaOS'ta harici diski "Format for ZimaOS" ile ekleyin
+5. Ollama modellerini harici diske yönlendirin
+
+=============================================================
+               Antigravity AI - 29 Aralık 2025
+=============================================================
