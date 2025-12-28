@@ -1,0 +1,253 @@
+# ZimaOS LLM Merkezi Yönetim Sistemi
+# AMD RX560/RX580 GPU Destekli Docker Compose
+# Dil: Türkçe | Language: Turkish
+
+version: '3.9'
+
+# Ortak ağ tanımı
+networks:
+  llm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# Kalıcı veri depolama
+volumes:
+  ollama-data:
+    driver: local
+  postgresql-data:
+    driver: local
+  mongodb-data:
+    driver: local
+  chromadb-data:
+    driver: local
+  n8n-data:
+    driver: local
+  portainer-data:
+    driver: local
+  openwebui-data:
+    driver: local
+
+services:
+  # ============================================
+  # PORTAINER - Docker Yönetim Arayüzü
+  # ============================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9443:9443"
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Docker Yönetim Merkezi"
+      - "com.llm-ordusu.language=tr"
+
+  # ============================================
+  # OLLAMA - AMD GPU Destekli LLM Motoru
+  # ============================================
+  ollama:
+    image: ollama/ollama:rocm
+    container_name: ollama-amd
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - /DATA/LLM-Ordusu/models/ollama:/models
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+      - HSA_OVERRIDE_GFX_VERSION=8.0.3
+      - ROCR_VISIBLE_DEVICES=0
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=AMD GPU LLM Motoru"
+      - "com.llm-ordusu.gpu=AMD RX560/RX580"
+
+  # ============================================
+  # OPEN WEBUI - LLM Chat Arayüzü
+  # ============================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - openwebui-data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=true
+      - DEFAULT_LOCALE=tr
+      - ENABLE_SIGNUP=true
+    depends_on:
+      - ollama
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=LLM Sohbet Arayüzü"
+      - "com.llm-ordusu.language=tr"
+
+  # ============================================
+  # POSTGRESQL - İlişkisel Veritabanı
+  # ============================================
+  postgresql:
+    image: postgres:16-alpine
+    container_name: postgresql
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+      - /DATA/LLM-Ordusu/databases/postgresql:/backup
+    environment:
+      - POSTGRES_USER=llm_admin
+      - POSTGRES_PASSWORD=Antigravity2025!
+      - POSTGRES_DB=llm_ordusu
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - TZ=Europe/Istanbul
+      - LANG=tr_TR.UTF-8
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Ana Veritabanı"
+
+  # ============================================
+  # MONGODB - NoSQL Veritabanı
+  # ============================================
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - /DATA/LLM-Ordusu/databases/mongodb:/backup
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=llm_admin
+      - MONGO_INITDB_ROOT_PASSWORD=Antigravity2025!
+      - TZ=Europe/Istanbul
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=NoSQL Veritabanı"
+
+  # ============================================
+  # CHROMADB - Vektör Veritabanı
+  # ============================================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb-data:/chroma/chroma
+      - /DATA/LLM-Ordusu/databases/vector-db:/backup
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Vektör Veritabanı (RAG için)"
+
+  # ============================================
+  # N8N - Otomasyon ve Workflow Merkezi
+  # ============================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - /DATA/Yonetim-Merkezi/scripts:/scripts
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=Antigravity2025!
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=Europe/Istanbul
+      - TZ=Europe/Istanbul
+      - N8N_DEFAULT_LOCALE=tr
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Otomasyon Merkezi"
+
+  # ============================================
+  # UPTIME KUMA - Sistem İzleme
+  # ============================================
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /DATA/Yonetim-Merkezi/configs/uptime-kuma:/app/data
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Sistem İzleme ve Uyarı"
+
+  # ============================================
+  # FLOWISE - No-Code LLM Builder
+  # ============================================
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    volumes:
+      - /DATA/LLM-Ordusu/agents:/root/.flowise
+    environment:
+      - FLOWISE_USERNAME=admin
+      - FLOWISE_PASSWORD=Antigravity2025!
+      - DATABASE_PATH=/root/.flowise
+      - APIKEY_PATH=/root/.flowise
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_PATH=/root/.flowise/logs
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=No-Code LLM Workflow Builder"
+
+  # ============================================
+  # NGINX PROXY MANAGER - Reverse Proxy
+  # ============================================
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+    volumes:
+      - /DATA/Yonetim-Merkezi/configs/nginx:/data
+      - /DATA/Sistem/certs:/etc/letsencrypt
+    networks:
+      - llm-network
+    labels:
+      - "com.llm-ordusu.description=Reverse Proxy ve SSL"

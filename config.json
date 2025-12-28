@@ -1,0 +1,122 @@
+{
+    "sistem": {
+        "ad": "LLM Ordusu Merkezi Yönetim Sistemi",
+        "versiyon": "1.0.0",
+        "dil": "tr",
+        "desteklenen_diller": ["tr", "en", "de", "fr", "es"],
+        "varsayilan_dil": "tr",
+        "zaman_dilimi": "Europe/Istanbul"
+    },
+    "zimaos": {
+        "ip": "192.168.1.43",
+        "hostname": "zimaos",
+        "web_port": 80,
+        "https_port": 443,
+        "ssh_port": 22
+    },
+    "gpu": {
+        "marka": "AMD",
+        "model": "RX560/RX580",
+        "vram": "8GB",
+        "driver": "ROCm",
+        "rocm_version": "5.7"
+    },
+    "servisler": {
+        "portainer": {
+            "port": 9443,
+            "aciklama": "Docker Yönetim Merkezi"
+        },
+        "ollama": {
+            "port": 11434,
+            "aciklama": "AMD GPU LLM Motoru"
+        },
+        "open_webui": {
+            "port": 3000,
+            "aciklama": "LLM Sohbet Arayüzü"
+        },
+        "postgresql": {
+            "port": 5432,
+            "aciklama": "İlişkisel Veritabanı"
+        },
+        "mongodb": {
+            "port": 27017,
+            "aciklama": "NoSQL Veritabanı"
+        },
+        "chromadb": {
+            "port": 8000,
+            "aciklama": "Vektör Veritabanı"
+        },
+        "n8n": {
+            "port": 5678,
+            "aciklama": "Otomasyon Merkezi"
+        },
+        "uptime_kuma": {
+            "port": 3001,
+            "aciklama": "Sistem İzleme"
+        },
+        "flowise": {
+            "port": 3002,
+            "aciklama": "No-Code LLM Builder"
+        },
+        "nginx_proxy": {
+            "port": 81,
+            "aciklama": "Reverse Proxy"
+        }
+    },
+    "veritabani": {
+        "postgresql": {
+            "host": "192.168.1.43",
+            "port": 5432,
+            "kullanici": "llm_admin",
+            "sifre": "Antigravity2025!",
+            "veritabani": "llm_ordusu"
+        },
+        "mongodb": {
+            "host": "192.168.1.43",
+            "port": 27017,
+            "kullanici": "llm_admin",
+            "sifre": "Antigravity2025!"
+        }
+    },
+    "llm_modelleri": {
+        "varsayilan": "llama2:7b",
+        "yuklenen_modeller": [
+            "llama2:7b",
+            "mistral:7b",
+            "codellama:7b"
+        ],
+        "onerilern_modeller": [
+            "deepseek-r1:14b",
+            "qwen2.5:14b",
+            "gemma2:9b"
+        ]
+    },
+    "ajanlar": {
+        "savunma": {
+            "aciklama": "Güvenlik ve savunma odaklı ajanlar",
+            "gorevler": ["tehdit_tespiti", "guvenlik_taramasi", "anomali_izleme"]
+        },
+        "yonetim": {
+            "aciklama": "Sistem yönetimi ve otomasyon ajanları",
+            "gorevler": ["kaynak_izleme", "yedekleme", "guncelleme"]
+        },
+        "otomasyon": {
+            "aciklama": "İş akışı ve görev otomasyonu",
+            "gorevler": ["veri_isleme", "raporlama", "entegrasyon"]
+        }
+    },
+    "yedekleme": {
+        "otomatik": true,
+        "saat": "03:00",
+        "saklama_suresi_gun": 30,
+        "hedefler": [
+            "Z:\\Yonetim-Merkezi\\backups",
+            "C:\\Users\\win11.2025\\ZimaOS-Backup"
+        ]
+    },
+    "guvenlik": {
+        "ssh_key_path": "C:\\Users\\win11.2025\\.ssh\\id_ed25519_zimaos",
+        "ssl_enabled": true,
+        "firewall_aktif": true
+    }
+}

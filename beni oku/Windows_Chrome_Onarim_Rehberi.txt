@@ -1,0 +1,78 @@
+=============================================================
+    WINDOWS VE CHROME HATA ONARIM REHBERİ
+    Oluşturulma: 29 Aralık 2025
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║               TESPİT EDİLEN DURUMLAR                      ║
+╚═══════════════════════════════════════════════════════════╝
+
+✅ Antigravity.exe çalışıyor (18 süreç aktif)
+✅ Chrome çalışıyor (17 süreç aktif)
+✅ Chrome Extensions dizininde 20 extension mevcut
+⚠️ Windows Event Log'da SideBySide hatası
+⚠️ Windows Event Log'da AppModel-State hatası
+
+=============================================================
+            ANTIGRAVITY CHROME EXTENSION KURULUMU
+=============================================================
+
+1. ANTİGRAVİTY İÇİNDEN CHROME'U AÇ:
+   - Antigravity IDE'yi aç
+   - Sağ üstteki Chrome ikonuna tıkla
+   - Bu özel Antigravity Chrome profili açar
+
+2. EXTENSION KURULUMU:
+   - Chrome açıldığında extension otomatik kurulacak
+   - Kurulmazsa: chrome://extensions adresine git
+   - "Developer mode" aç
+   - "Add to Chrome" ile extension'ı ekle
+
+3. BAĞLANTI SORUNLARI İÇİN:
+   - Antigravity IDE'nin çalıştığından emin ol
+   - Extension ikonuna tıkla → "Reconnect to Antigravity"
+   - Chrome'u tamamen kapat ve yeniden aç
+
+=============================================================
+                  WINDOWS HATA ONARIMI
+=============================================================
+
+YÖNETİCİ OLARAK KOMUT İSTEMİ AÇIN:
+
+1. SİSTEM DOSYASI KONTROLÜ:
+   sfc /scannow
+
+2. DISM ONARIMI:
+   DISM /Online /Cleanup-Image /RestoreHealth
+
+3. WINDOWS UPDATE ONARIMI:
+   DISM /Online /Cleanup-Image /StartComponentCleanup
+
+=============================================================
+          ANTIGRAVITY CHROME PROFİLİ SIFIRLAMA
+=============================================================
+
+Eğer extension düzgün çalışmıyorsa:
+
+1. Antigravity'yi kapat
+2. Bu klasörü sil:
+   %APPDATA%\Antigravity\Chrome
+3. Antigravity'yi yeniden başlat
+4. Chrome otomatik olarak yeni profil oluşturacak
+
+=============================================================
+                    ERİŞİM NOKTALARI
+=============================================================
+
+Antigravity Programı:
+  C:\Users\win11.2025\AppData\Local\Programs\Antigravity\
+
+Antigravity Profil:
+  C:\Users\win11.2025\AppData\Roaming\Antigravity\
+
+Chrome Extensions:
+  %LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\
+
+=============================================================
+              Antigravity AI tarafından oluşturuldu
+=============================================================

@@ -1,0 +1,98 @@
+# ============================================
+# Ağ Genelinde SSH Yapılandırması
+# Tüm cihazlar için merkezi SSH config
+# Antigravity LLM Ordusu Ağı
+# ============================================
+
+# ============================================
+# ZimaOS - Ana Sunucu (Yerel Ağ)
+# ============================================
+Host zimaos
+    HostName 192.168.1.43
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+    UserKnownHostsFile ~/.ssh/known_hosts
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    Compression yes
+
+# ZimaOS - ZeroTier VPN üzerinden
+Host zimaos-vpn
+    HostName 10.147.11.1
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+    ServerAliveInterval 60
+
+# ============================================
+# Windows Ana Bilgisayar (SSH Server varsa)
+# ============================================
+Host windows-main
+    HostName 192.168.1.46
+    User win11.2025
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+
+Host windows-main-vpn
+    HostName 10.147.11.32
+    User win11.2025
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+
+# ============================================
+# Router/Gateway
+# ============================================
+Host router
+    HostName 192.168.1.1
+    User admin
+    Port 22
+    StrictHostKeyChecking no
+
+# ============================================
+# Diğer Ağ Cihazları (Şablon)
+# ============================================
+Host device-160
+    HostName 192.168.1.160
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+
+# ============================================
+# WSL (Windows Subsystem for Linux)
+# ============================================
+Host wsl
+    HostName 172.23.252.162
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    StrictHostKeyChecking no
+
+# ============================================
+# Genel Ayarlar (Tüm hostlar için)
+# ============================================
+Host *
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+    TCPKeepAlive yes
+    ConnectTimeout 10
+    
+# ============================================
+# GitHub ve GitLab
+# ============================================
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    IdentitiesOnly yes
+
+Host gitlab.com
+    HostName gitlab.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_zimaos
+    IdentitiesOnly yes

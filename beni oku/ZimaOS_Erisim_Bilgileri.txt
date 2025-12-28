@@ -1,0 +1,99 @@
+=============================================================
+    ZimaOS SİSTEM ERİŞİM BİLGİLERİ VE LLM YAPILANDIRMASI
+    Oluşturulma: 29 Aralık 2025
+    Son Güncelleme: 29 Aralık 2025, 00:25
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║                    SİSTEM BİLGİLERİ                       ║
+╠═══════════════════════════════════════════════════════════╣
+║ IP Adresi: 192.168.1.43                                   ║
+║ Sistem: ZimaOS v1.5.3 (ZimaCube)                          ║
+║ Kernel: Linux 6.12.25                                     ║
+║ RAM: 15GB (13GB kullanılabilir)                           ║
+╚═══════════════════════════════════════════════════════════╝
+
+=============================================================
+                    ERİŞİM BİLGİLERİ
+=============================================================
+
+1. WEB ARAYÜZÜ
+   URL: http://192.168.1.43
+   Durum: AKTİF ✓
+
+2. WEB TERMİNAL (Port 2222)
+   URL: http://192.168.1.43:2222
+   Kullanıcı: root
+   Şifre: [GEREKMİYOR]
+   Durum: AKTİF ✓
+
+3. TTYD TERMİNAL (Port 7681)
+   URL: http://192.168.1.43:7681
+   Kullanıcı: root
+   Şifre: [GEREKMİYOR]
+   Durum: AKTİF ✓
+
+4. PORTAINER YÖNETİM PANELİ
+   URL: http://192.168.1.43:9000
+   HTTPS: https://192.168.1.43:9443
+   Durum: AKTİF ✓
+
+5. OLLAMA LLM API
+   URL: http://192.168.1.43:11434
+   Versiyon: 0.9.5
+   Durum: AKTİF ✓
+
+=============================================================
+                    DİSK DURUMU
+=============================================================
+
+SORUN: /DATA bölümü %100 DOLU (98GB)
+
+ÇÖZÜM: Harici disklere model yükleme
+   - Elements: 8.4 TB (önerilen)
+   - Yeni Birim: 749 GB
+
+=============================================================
+                    DOCKER KONTEYNERLARI
+=============================================================
+
+1. ollama (ollama/ollama:0.9.5)
+   Port: 11434
+   Durum: ÇALIŞIYOR ✓
+
+2. ttydbridge (cp0204/ttydbridge:v0.0.3)
+   Portlar: 2222, 7681
+   Durum: ÇALIŞIYOR ✓
+
+3. portainer (portainer/portainer-ce:2.31.3)
+   Portlar: 9000, 9443
+   Durum: ÇALIŞIYOR ✓
+
+=============================================================
+                    OLLAMA API KOMUTLARI
+=============================================================
+
+Model Listesi:
+  curl http://192.168.1.43:11434/api/tags
+
+Model İndirme:
+  curl http://192.168.1.43:11434/api/pull -d '{"name":"qwen2.5:0.5b"}'
+
+LLM ile Konuşma:
+  curl http://192.168.1.43:11434/api/generate -d '{
+    "model":"MODEL_ADI",
+    "prompt":"Mesajınız",
+    "stream":false
+  }'
+
+=============================================================
+                    SONRAKİ ADIMLAR
+=============================================================
+
+[ ] Ollama model dizinini harici diske taşı
+[ ] LLM modellerini indir (qwen2.5, llama3.2)
+[ ] LLM Ordusu Başkanı'nı yapılandır
+
+=============================================================
+              Antigravity AI tarafından oluşturuldu
+=============================================================
