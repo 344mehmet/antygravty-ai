@@ -113,6 +113,7 @@ input group "=== BOLLINGER BANDS ==="
 input bool     InpUseBB            = true;         // Bollinger Bands Kullan
 input int      InpBB_Period        = 20;           // BB Periyodu
 input double   InpBB_Deviation     = 2.0;          // BB Standart Sapma
+input ENUM_APPLIED_PRICE InpBB_AppliedPrice = PRICE_CLOSE; // BB Uygulanan Fiyat
 input bool     InpBB_Squeeze       = true;         // BB Sıkışma Filtresi
 
 input group "=== MACD ==="
@@ -974,10 +975,7 @@ input double   InpGA_MinScore      = 99.0;         // Min Score (0-100)
 input int      InpGA_Layers        = 15;           // Neural Layers
 
 
-input group "=== GALACTIC AI ==="
-input bool     InpUseGalacticAI    = false;        // Galactic AI Kullan
-input double   InpGA_MinScore      = 99.0;         // Min Score (0-100)
-input int      InpGA_Layers        = 15;           // Neural Layers
+
 
 input group "=== OMNI TREND ==="
 input bool     InpUseOmniTrend     = true;         // Omni Trend Kullan
@@ -1063,15 +1061,13 @@ input bool     InpUseSingularityAI = false;        // Singularity AI Kullan
 input double   InpSA_MinScore      = 99.9;         // Min Score (0-100)
 input int      InpSA_Neurons       = 1000;         // Neural complexity
 
-int handleStoch;
-
-// NEW v3 HANDLES
-int handleADX;
-int handleIchimoku;
-int handleSAR;
-int handleCCI;
-int handleWilliams;
-int handleMFI;
+// Global Indicator Handles
+// Indicators
+int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
+int handleATR, handleRSI, handleVolume, handleStoch;
+int handleMTF_MA1, handleMTF_MA5;
+int handleBB, handleMACD, handleCCI;
+int handleADX, handleIchimoku, handleSAR, handleWilliams, handleMFI;
 
 // MA Values
 double ma1[], ma2[], ma3[], ma4[], ma5[];
@@ -1260,7 +1256,7 @@ double maCorr = 0;
 double gmScore = 0;
 
 // NEW v15 VALUES - FINAL 10
-double fiboLevel = 0, fiboHigh = 0, fiboLow = 0;
+double fiboLevel = 0;
 int elliottWave = 0;
 bool harmPattern = false;
 int mktStructure = 0; // 1=Bullish, -1=Bearish
@@ -1369,6 +1365,12 @@ datetime newsEventTime = 0;
 string panelName = "MA5_Panel";
 string signalArrowPrefix = "Signal_";
 
+// Trading objects
+CTrade trade;
+CPositionInfo posInfo;
+COrderInfo orderInfo;
+
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
 //+------------------------------------------------------------------+
@@ -1405,6 +1407,9 @@ int OnInit()
         handleMTF_MA1 = iMA(_Symbol, InpMTF_Higher, InpMA1_Period, 0, maMethod, InpMA_Price);
         handleMTF_MA5 = iMA(_Symbol, InpMTF_Higher, InpMA5_Period, 0, maMethod, InpMA_Price);
     }
+    
+    // Initialize all other module indicators
+    InitNewIndicators();
     
     if(handleMA1 == INVALID_HANDLE || handleMA2 == INVALID_HANDLE || 
        handleMA3 == INVALID_HANDLE || handleMA4 == INVALID_HANDLE || 
@@ -2785,10 +2790,21 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply V13-V21 Module Aggregates
-    // We assume these functions exist as they were added in previous steps
-    // If any are missing, the compiler would complain, but we are confident.
+    // Apply v1-v21 Module Aggregates
     
+    // v1-v2 (Initial 10 modules + New 10)
+    if(!ApplyNew10Filters(signal)) return false;
+    // v3-v12 (Advanced sets)
+    if(!ApplyV3Filters(signal)) return false;
+    if(!ApplyV4Filters(signal)) return false;
+    if(!ApplyV5Filters(signal)) return false;
+    if(!ApplyV6Filters(signal)) return false;
+    if(!ApplyV7Filters(signal)) return false;
+    if(!ApplyV8Filters(signal)) return false;
+    if(!ApplyV9Filters(signal)) return false;
+    if(!ApplyV10Filters(signal)) return false;
+    if(!ApplyV11Filters(signal)) return false;
+    if(!ApplyV12Filters(signal)) return false;
     // v13
     if(!ApplyV13Filters(signal)) return false;
     // v14
@@ -2828,7 +2844,7 @@ bool CheckBBFilter(ENUM_SIGNAL_TYPE signal)
     if(CopyBuffer(handleBB, 2, 0, 3, bbLower) < 3) return true;
     
     double close = iClose(_Symbol, PERIOD_CURRENT, 0);
-    double bbWidth = (bbUpper[0] - bbLower[0]) / bbMiddle[0];
+    bbWidth = (bbUpper[0] - bbLower[0]) / bbMiddle[0];
     double avgWidth = (bbUpper[1] - bbLower[1]) / bbMiddle[1];
     
     // Squeeze detection (bands narrowing)
@@ -3231,13 +3247,21 @@ void InitNewIndicators()
     ENUM_MA_METHOD maMethod = (ENUM_MA_METHOD)InpMA_Method;
     
     if(InpUseBB)
-        handleBB = iBands(_Symbol, PERIOD_CURRENT, InpBB_Period, 0, InpBB_Deviation, PRICE_CLOSE);
+        handleBB = iBands(_Symbol, PERIOD_CURRENT, InpBB_Period, InpBB_Deviation, 0, InpBB_AppliedPrice);
     
     if(InpUseMACD)
         handleMACD = iMACD(_Symbol, PERIOD_CURRENT, InpMACD_Fast, InpMACD_Slow, InpMACD_Signal, PRICE_CLOSE);
     
     if(InpUseStoch)
         handleStoch = iStochastic(_Symbol, PERIOD_CURRENT, InpStoch_K, InpStoch_D, InpStoch_Slowing, MODE_SMA, STO_LOWHIGH);
+    
+    // v3 Indicators
+    handleCCI = iCCI(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
+    handleADX = iADX(_Symbol, PERIOD_CURRENT, InpADX_Period);
+    handleSAR = iSAR(_Symbol, PERIOD_CURRENT, InpSAR_Step, InpSAR_Max);
+    handleWilliams = iWPR(_Symbol, PERIOD_CURRENT, InpWilliams_Period);
+    handleMFI = iMFI(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
+    handleIchimoku = iIchimoku(_Symbol, PERIOD_CURRENT, InpIchi_Tenkan, InpIchi_Kijun, InpIchi_Senkou);
     
     // Set arrays as series
     ArraySetAsSeries(bbUpper, true);
@@ -8334,16 +8358,16 @@ bool CheckSessionBiasFilter(ENUM_SIGNAL_TYPE signal)
 double CalculatePosSizing()
 {
     if(!InpUsePosSizing)
-        return InpLots;
+        return InpMinLot;
     
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     double riskAmount = balance * InpPS_RiskPercent / 100.0;
-    double stopLoss = atr[0] * InpAtr_SL_Mult;
+    double stopLoss = atr[0] * InpATR_Multiplier;
     double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
     double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     
     if(tickValue == 0 || tickSize == 0 || stopLoss == 0)
-        return InpLots;
+        return InpMinLot;
     
     posLotSize = riskAmount / (stopLoss / tickSize * tickValue);
     posLotSize = MathMin(posLotSize, InpPS_MaxLot);
@@ -8450,14 +8474,14 @@ bool CheckICTFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // ICT: Look for displacement and imbalance
-    double displacement = 0;
+    double ictDisp = 0;
     for(int i = 0; i < 3; i++)
     {
-        displacement += iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i);
+        ictDisp += iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i);
     }
     
-    if(displacement > 0) ictBias = 1;
-    else if(displacement < 0) ictBias = -1;
+    if(ictDisp > 0) ictBias = 1;
+    else if(ictDisp < 0) ictBias = -1;
     else ictBias = 0;
     
     if(signal == SIGNAL_BUY && ictBias < 0)
@@ -9221,7 +9245,7 @@ bool CheckOTEFilter(ENUM_SIGNAL_TYPE signal)
     if(!InpUseOTE)
         return true;
     
-    double swingHigh = 0, swingLow = 999999;
+    swingHigh = 0; swingLow = 999999;
     
     for(int i = 0; i < 50; i++)
     {
@@ -9999,7 +10023,7 @@ bool CheckOmniTrendFilter(ENUM_SIGNAL_TYPE signal)
     if(ma1[0] > ma5[0]) consensus++; else consensus--;
     
     // MACD Trend
-    double macdMain = 0, macdSig = 0;
+    double zetaMacd = 0, zetaSig = 0;
     double macd[1];
     if(handleMACD != INVALID_HANDLE)
     {
