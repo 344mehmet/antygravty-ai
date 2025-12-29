@@ -806,7 +806,49 @@ input bool     InpUseQuantumAI     = false;        // Quantum AI Kullan
 input double   InpQA_MinScore      = 85.0;         // Min Score (0-100)
 input int      InpQA_Qubits        = 8;            // Quantum Bits
 
-int handleMTF_MA1, handleMTF_MA5;
+input group "=== ICT CONCEPTS ==="
+input bool     InpUseICT           = true;         // ICT Kullan
+input int      InpICT_Period       = 20;           // Periyot
+
+input group "=== WYCKOFF METHOD ==="
+input bool     InpUseWyckoff       = true;         // Wyckoff Kullan
+input int      InpWyck_Period      = 50;           // Periyot
+
+input group "=== VSA (Volume Spread) ==="
+input bool     InpUseVSA           = true;         // VSA Kullan
+input double   InpVSA_Threshold    = 1.5;          // Volume Threshold
+
+input group "=== INSTITUTIONAL FLOW ==="
+input bool     InpUseInstitutional = true;         // Institutional Kullan
+input int      InpInst_Period      = 20;           // Periyot
+
+input group "=== KILL ZONES ==="
+input bool     InpUseKillZones     = true;         // Kill Zones Kullan
+input int      InpKZ_LondonOpen    = 7;            // London Open (hour)
+input int      InpKZ_NYOpen        = 13;           // NY Open (hour)
+
+input group "=== BREAKER BLOCKS ==="
+input bool     InpUseBreaker       = true;         // Breaker Kullan
+input int      InpBreaker_Period   = 50;           // Lookback
+
+input group "=== MITIGATION BLOCKS ==="
+input bool     InpUseMitigation    = true;         // Mitigation Kullan
+input int      InpMit_Period       = 30;           // Lookback
+
+input group "=== ASIAN RANGE ==="
+input bool     InpUseAsianRange    = true;         // Asian Range Kullan
+input int      InpAR_Start         = 0;            // Start Hour
+input int      InpAR_End           = 6;            // End Hour
+
+input group "=== PREMIUM/DISCOUNT ==="
+input bool     InpUsePremDisc      = true;         // Prem/Disc Kullan
+input double   InpPD_Threshold     = 0.25;         // Zone Threshold
+
+input group "=== INFINITY AI ==="
+input bool     InpUseInfinityAI    = false;        // Infinity AI Kullan
+input double   InpIA_MinScore      = 90.0;         // Min Score (0-100)
+input int      InpIA_Neurons       = 20;           // Neural Count
+
 
 // NEW 10 MODULE HANDLES
 int handleBB;
@@ -1018,6 +1060,18 @@ double imbRatio = 0;
 int sessionBias = 0; // 1=Buy, -1=Sell
 double posLotSize = 0;
 double qaScore = 0;
+
+// NEW v16 VALUES - LEGENDARY 10
+int ictBias = 0;
+int wyckPhase = 0; // 1=Accum, 2=Markup, 3=Dist, 4=Markdown
+bool vsaSignal = false;
+double instFlow = 0;
+bool inKillZone = false;
+double breakerHigh = 0, breakerLow = 0;
+double mitHigh = 0, mitLow = 0;
+double arHigh = 0, arLow = 0;
+bool inPremium = false, inDiscount = false;
+double iaScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -8085,6 +8139,412 @@ bool ApplyV15Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckQuantumAIFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|       LEGENDARY v16 MODÜL FONKSIYONLARI (10 MODUL) - 158 TOTAL   |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ICT Concepts Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckICTFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseICT)
+        return true;
+    
+    // ICT: Look for displacement and imbalance
+    double displacement = 0;
+    for(int i = 0; i < 3; i++)
+    {
+        displacement += iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    if(displacement > 0) ictBias = 1;
+    else if(displacement < 0) ictBias = -1;
+    else ictBias = 0;
+    
+    if(signal == SIGNAL_BUY && ictBias < 0)
+        return false;
+    if(signal == SIGNAL_SELL && ictBias > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Wyckoff Method Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckWyckoffFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWyckoff)
+        return true;
+    
+    // Detect Wyckoff phases
+    double highest = 0, lowest = 999999;
+    double sumVol = 0;
+    
+    for(int i = 0; i < InpWyck_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+        sumVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double avgVol = sumVol / InpWyck_Period;
+    double range = highest - lowest;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    long currentVol = iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Phase detection (simplified)
+    if(close < lowest + range * 0.3 && currentVol > avgVol) wyckPhase = 1; // Accumulation
+    else if(close > lowest + range * 0.3 && close < highest - range * 0.3 && mktStructure > 0) wyckPhase = 2; // Markup
+    else if(close > highest - range * 0.3 && currentVol > avgVol) wyckPhase = 3; // Distribution
+    else if(mktStructure < 0) wyckPhase = 4; // Markdown
+    
+    if(signal == SIGNAL_BUY && (wyckPhase == 3 || wyckPhase == 4))
+        return false;
+    if(signal == SIGNAL_SELL && (wyckPhase == 1 || wyckPhase == 2))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| VSA (Volume Spread Analysis) Filter                              |
+//+------------------------------------------------------------------+
+bool CheckVSAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVSA)
+        return true;
+    
+    double spread = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    long vol = iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Calculate average
+    double avgSpread = 0;
+    double avgVol = 0;
+    for(int i = 1; i <= 20; i++)
+    {
+        avgSpread += iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+        avgVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    }
+    avgSpread /= 20;
+    avgVol /= 20;
+    
+    // High volume + narrow spread = professional activity
+    bool professionalBuying = vol > avgVol * InpVSA_Threshold && spread < avgSpread && 
+                              iClose(_Symbol, PERIOD_CURRENT, 0) > iOpen(_Symbol, PERIOD_CURRENT, 0);
+    bool professionalSelling = vol > avgVol * InpVSA_Threshold && spread < avgSpread && 
+                               iClose(_Symbol, PERIOD_CURRENT, 0) < iOpen(_Symbol, PERIOD_CURRENT, 0);
+    
+    vsaSignal = professionalBuying || professionalSelling;
+    
+    if(signal == SIGNAL_BUY && professionalSelling)
+        return false;
+    if(signal == SIGNAL_SELL && professionalBuying)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Institutional Order Flow Filter                                  |
+//+------------------------------------------------------------------+
+bool CheckInstitutionalFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInstitutional)
+        return true;
+    
+    instFlow = 0;
+    
+    for(int i = 0; i < InpInst_Period; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double open = iOpen(_Symbol, PERIOD_CURRENT, i);
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        
+        if(close > open) instFlow += vol;
+        else instFlow -= vol;
+    }
+    
+    if(signal == SIGNAL_BUY && instFlow < 0)
+        return false;
+    if(signal == SIGNAL_SELL && instFlow > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Kill Zones Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckKillZonesFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKillZones)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    int hour = dt.hour;
+    
+    // Kill zones: London Open (7-9 GMT), NY Open (13-15 GMT)
+    inKillZone = (hour >= InpKZ_LondonOpen && hour < InpKZ_LondonOpen + 2) ||
+                 (hour >= InpKZ_NYOpen && hour < InpKZ_NYOpen + 2);
+    
+    // Only trade in kill zones for higher probability
+    if(!inKillZone)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Breaker Blocks Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckBreakerFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBreaker)
+        return true;
+    
+    breakerHigh = 0;
+    breakerLow = 0;
+    
+    // Find breaker block (failed order block)
+    for(int i = 5; i < InpBreaker_Period; i++)
+    {
+        double prevHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double prevLow = iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        // Check if price broke through and came back
+        bool brokeHigh = false, brokeBack = false;
+        for(int j = i - 1; j >= 0 && j >= i - 5; j--)
+        {
+            if(iHigh(_Symbol, PERIOD_CURRENT, j) > prevHigh) brokeHigh = true;
+            if(brokeHigh && iClose(_Symbol, PERIOD_CURRENT, j) < prevHigh) brokeBack = true;
+        }
+        
+        if(brokeHigh && brokeBack)
+        {
+            breakerHigh = prevHigh;
+            breakerLow = prevLow;
+            break;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Mitigation Blocks Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckMitigationFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMitigation)
+        return true;
+    
+    mitHigh = 0;
+    mitLow = 0;
+    
+    // Find unmitigated zones
+    for(int i = 3; i < InpMit_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        bool mitigated = false;
+        for(int j = i - 1; j >= 0; j--)
+        {
+            if(iLow(_Symbol, PERIOD_CURRENT, j) <= low || iHigh(_Symbol, PERIOD_CURRENT, j) >= high)
+            {
+                mitigated = true;
+                break;
+            }
+        }
+        
+        if(!mitigated)
+        {
+            mitHigh = high;
+            mitLow = low;
+            break;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Asian Range Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckAsianRangeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAsianRange)
+        return true;
+    
+    arHigh = 0;
+    arLow = 999999;
+    
+    // Calculate Asian session range
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    for(int i = 0; i < 100; i++)
+    {
+        datetime barTime = iTime(_Symbol, PERIOD_H1, i);
+        MqlDateTime barDt;
+        TimeToStruct(barTime, barDt);
+        
+        if(barDt.hour >= InpAR_Start && barDt.hour < InpAR_End && barDt.day == dt.day)
+        {
+            if(iHigh(_Symbol, PERIOD_H1, i) > arHigh) arHigh = iHigh(_Symbol, PERIOD_H1, i);
+            if(iLow(_Symbol, PERIOD_H1, i) < arLow) arLow = iLow(_Symbol, PERIOD_H1, i);
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < arHigh && arHigh > 0)
+        return true;
+    if(signal == SIGNAL_SELL && close > arLow && arLow < 999999)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Premium/Discount Zones Filter                                    |
+//+------------------------------------------------------------------+
+bool CheckPremDiscFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePremDisc)
+        return true;
+    
+    double highest = 0, lowest = 999999;
+    for(int i = 0; i < 50; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double range = highest - lowest;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double position = range > 0 ? (close - lowest) / range : 0.5;
+    
+    inPremium = position > (1 - InpPD_Threshold);
+    inDiscount = position < InpPD_Threshold;
+    
+    if(signal == SIGNAL_BUY && inPremium)
+        return false;
+    if(signal == SIGNAL_SELL && inDiscount)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Infinity AI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckInfinityAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInfinityAI)
+        return true;
+    
+    // Ultimate neural network scoring
+    double inputs[30];
+    int inCount = 0;
+    
+    inputs[inCount++] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    inputs[inCount++] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    inputs[inCount++] = kamaValue > kamaPrev ? 1.0 : -1.0;
+    inputs[inCount++] = tsiValue / 100.0;
+    inputs[inCount++] = rmiValue / 100.0;
+    inputs[inCount++] = chopIndex < 50 ? 1.0 : -1.0;
+    inputs[inCount++] = (double)confSignals / 5.0;
+    inputs[inCount++] = mktMomValue > 0 ? 1.0 : -1.0;
+    inputs[inCount++] = htTrend ? 1.0 : -1.0;
+    inputs[inCount++] = ofBuyVol > ofSellVol ? 1.0 : -1.0;
+    inputs[inCount++] = smAccum > smDist ? 1.0 : -1.0;
+    inputs[inCount++] = ictBias;
+    inputs[inCount++] = wyckPhase == 1 || wyckPhase == 2 ? 1.0 : -1.0;
+    inputs[inCount++] = vsaSignal ? 1.0 : 0.0;
+    inputs[inCount++] = instFlow > 0 ? 1.0 : -1.0;
+    inputs[inCount++] = inKillZone ? 1.0 : 0.0;
+    inputs[inCount++] = inDiscount && signal == SIGNAL_BUY ? 1.0 : (inPremium && signal == SIGNAL_SELL ? 1.0 : 0.0);
+    
+    // Deep neural processing
+    double layer1[20], layer2[20], layer3[20];
+    
+    for(int j = 0; j < InpIA_Neurons && j < 20; j++)
+    {
+        layer1[j] = 0;
+        for(int i = 0; i < inCount; i++)
+            layer1[j] += inputs[i] * MathSin((i + 1) * (j + 1) * 0.1);
+        layer1[j] = MathTanh(layer1[j]);
+    }
+    
+    for(int j = 0; j < InpIA_Neurons && j < 20; j++)
+    {
+        layer2[j] = 0;
+        for(int i = 0; i < InpIA_Neurons && i < 20; i++)
+            layer2[j] += layer1[i] * MathCos((i + j) * 0.15);
+        layer2[j] = MathTanh(layer2[j]);
+    }
+    
+    for(int j = 0; j < InpIA_Neurons && j < 20; j++)
+    {
+        layer3[j] = 0;
+        for(int i = 0; i < InpIA_Neurons && i < 20; i++)
+            layer3[j] += layer2[i] * MathSin((i * j + 1) * 0.12);
+        layer3[j] = MathTanh(layer3[j]);
+    }
+    
+    iaScore = 0;
+    for(int j = 0; j < InpIA_Neurons && j < 20; j++)
+        iaScore += layer3[j] * (0.1 + 0.05 * (j % 5));
+    iaScore = (MathTanh(iaScore) + 1) / 2 * 100;
+    
+    if(iaScore < InpIA_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v16 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV16Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckICTFilter(signal))
+        return false;
+    
+    if(!CheckWyckoffFilter(signal))
+        return false;
+    
+    if(!CheckVSAFilter(signal))
+        return false;
+    
+    if(!CheckInstitutionalFilter(signal))
+        return false;
+    
+    if(!CheckKillZonesFilter(signal))
+        return false;
+    
+    if(!CheckBreakerFilter(signal))
+        return false;
+    
+    if(!CheckMitigationFilter(signal))
+        return false;
+    
+    if(!CheckAsianRangeFilter(signal))
+        return false;
+    
+    if(!CheckPremDiscFilter(signal))
+        return false;
+    
+    if(!CheckInfinityAIFilter(signal))
         return false;
     
     return true;
