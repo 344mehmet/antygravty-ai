@@ -109,6 +109,60 @@ input double   InpPartial1_ATRMult = 1.0;          // 1. Kapanış ATR Çarpanı
 input double   InpPartial2_Percent = 30.0;         // 2. Kapanış Yüzdesi
 input double   InpPartial2_ATRMult = 1.5;          // 2. Kapanış ATR Çarpanı
 
+input group "=== BOLLINGER BANDS ==="
+input bool     InpUseBB            = true;         // Bollinger Bands Kullan
+input int      InpBB_Period        = 20;           // BB Periyodu
+input double   InpBB_Deviation     = 2.0;          // BB Standart Sapma
+input bool     InpBB_Squeeze       = true;         // BB Sıkışma Filtresi
+
+input group "=== MACD ==="
+input bool     InpUseMACD          = true;         // MACD Kullan
+input int      InpMACD_Fast        = 12;           // MACD Hızlı
+input int      InpMACD_Slow        = 26;           // MACD Yavaş
+input int      InpMACD_Signal      = 9;            // MACD Sinyal
+
+input group "=== STOCHASTIC ==="
+input bool     InpUseStoch         = true;         // Stochastic Kullan
+input int      InpStoch_K          = 14;           // %K Periyodu
+input int      InpStoch_D          = 3;            // %D Periyodu
+input int      InpStoch_Slowing    = 3;            // Slowing
+input int      InpStoch_Overbought = 80;           // Aşırı Alım
+input int      InpStoch_Oversold   = 20;           // Aşırı Satım
+
+input group "=== FIBONACCI ==="
+input bool     InpUseFibo          = false;        // Fibonacci Kullan
+input int      InpFibo_Lookback    = 50;           // Bakış Periyodu
+input double   InpFibo_Level1      = 38.2;         // Fibo Seviye 1 (%)
+input double   InpFibo_Level2      = 61.8;         // Fibo Seviye 2 (%)
+
+input group "=== SUPPORT/RESISTANCE ==="
+input bool     InpUseSR            = true;         // S/R Kullan
+input int      InpSR_Lookback      = 100;          // S/R Bakış Periyodu
+input int      InpSR_TouchCount    = 2;            // Min Dokunma Sayısı
+input double   InpSR_Zone          = 0.0005;       // S/R Bölge Toleransı
+
+input group "=== DRAWDOWN PROTECTION ==="
+input bool     InpUseDD            = true;         // Drawdown Koruması Kullan
+input double   InpMaxDD_Percent    = 10.0;         // Max Drawdown (%)
+input double   InpDD_Recovery      = 50.0;         // Toparlanma Oranı (%)
+
+input group "=== EQUITY CURVE TRADING ==="
+input bool     InpUseEquity        = false;        // Equity Curve Filtresi
+input int      InpEquity_MA        = 20;           // Equity MA Periyodu
+input bool     InpEquity_AboveMA   = true;         // Sadece MA Üstünde İşlem
+
+input group "=== TIME-BASED EXIT ==="
+input bool     InpUseTimeExit      = true;         // Zaman Bazlı Çıkış
+input int      InpMaxHoldHours     = 48;           // Max Pozisyon Süresi (saat)
+input int      InpFridayExitHour   = 20;           // Cuma Çıkış Saati
+
+input group "=== GRID TRADING ==="
+input bool     InpUseGrid          = false;        // Grid Trading Kullan
+input int      InpGrid_Levels      = 3;            // Grid Seviyeleri
+input int      InpGrid_Distance    = 20;           // Grid Mesafesi (pips)
+input double   InpGrid_LotMult     = 1.5;          // Grid Lot Çarpanı
+
+
 //+------------------------------------------------------------------+
 //| GLOBAL VARIABLES                                                  |
 //+------------------------------------------------------------------+
@@ -125,6 +179,11 @@ int handleRSI;
 int handleVolume;
 int handleMTF_MA1, handleMTF_MA5;
 
+// NEW 10 MODULE HANDLES
+int handleBB;
+int handleMACD;
+int handleStoch;
+
 // MA Values
 double ma1[], ma2[], ma3[], ma4[], ma5[];
 double atr[];
@@ -134,6 +193,15 @@ double rsi[];
 double volume[], volumeMA[];
 double mtf_ma1[], mtf_ma5[];
 
+// NEW 10 MODULE VALUES
+double bbUpper[], bbMiddle[], bbLower[];
+double macdMain[], macdSignal[], macdHist[];
+double stochK[], stochD[];
+double fiboHigh = 0, fiboLow = 0;
+double supportLevel = 0, resistanceLevel = 0;
+double equityHistory[];
+int gridLevel = 0;
+
 // Statistics
 double dailyProfit = 0;
 double dailyStartBalance = 0;
@@ -141,6 +209,11 @@ datetime lastDayCheck = 0;
 int totalTrades = 0;
 int winTrades = 0;
 int lossTrades = 0;
+
+// Drawdown tracking
+double peakBalance = 0;
+double currentDrawdown = 0;
+bool ddRecoveryMode = false;
 
 // Signal tracking
 ENUM_SIGNAL_TYPE lastSignal = SIGNAL_NONE;
@@ -1578,6 +1651,475 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         Print("⚠️ MTF filtresi sinyali engelledi");
         return false;
     }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI 10 MODÜL FONKSIYONLARI                         |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Bollinger Bands Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckBBFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBB)
+        return true;
+    
+    if(CopyBuffer(handleBB, 0, 0, 3, bbMiddle) < 3) return true;
+    if(CopyBuffer(handleBB, 1, 0, 3, bbUpper) < 3) return true;
+    if(CopyBuffer(handleBB, 2, 0, 3, bbLower) < 3) return true;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double bbWidth = (bbUpper[0] - bbLower[0]) / bbMiddle[0];
+    double avgWidth = (bbUpper[1] - bbLower[1]) / bbMiddle[1];
+    
+    // Squeeze detection (bands narrowing)
+    if(InpBB_Squeeze && bbWidth < avgWidth * 0.8)
+    {
+        return false; // Wait for expansion
+    }
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Price near lower band for buy
+        if(close > bbUpper[0])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Price near upper band for sell
+        if(close < bbLower[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| MACD Filter                                                      |
+//+------------------------------------------------------------------+
+bool CheckMACDFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMACD)
+        return true;
+    
+    if(CopyBuffer(handleMACD, 0, 0, 3, macdMain) < 3) return true;
+    if(CopyBuffer(handleMACD, 1, 0, 3, macdSignal) < 3) return true;
+    
+    double hist0 = macdMain[0] - macdSignal[0];
+    double hist1 = macdMain[1] - macdSignal[1];
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // MACD should be bullish (histogram positive or rising)
+        if(hist0 < 0 && hist0 < hist1)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // MACD should be bearish
+        if(hist0 > 0 && hist0 > hist1)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Stochastic Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckStochFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStoch)
+        return true;
+    
+    if(CopyBuffer(handleStoch, 0, 0, 3, stochK) < 3) return true;
+    if(CopyBuffer(handleStoch, 1, 0, 3, stochD) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // For buy: Stoch should not be overbought
+        if(stochK[0] > InpStoch_Overbought)
+            return false;
+        // K crossing above D is bullish
+        if(stochK[0] < stochD[0] && stochK[1] > stochD[1])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // For sell: Stoch should not be oversold
+        if(stochK[0] < InpStoch_Oversold)
+            return false;
+        // K crossing below D is bearish
+        if(stochK[0] > stochD[0] && stochK[1] < stochD[1])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Fibonacci Levels                                       |
+//+------------------------------------------------------------------+
+void CalculateFiboLevels()
+{
+    if(!InpUseFibo)
+        return;
+    
+    double highest = 0, lowest = 999999;
+    
+    for(int i = 0; i < InpFibo_Lookback; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        if(high > highest) highest = high;
+        if(low < lowest) lowest = low;
+    }
+    
+    fiboHigh = highest;
+    fiboLow = lowest;
+}
+
+bool CheckFiboFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFibo)
+        return true;
+    
+    CalculateFiboLevels();
+    
+    double range = fiboHigh - fiboLow;
+    double level1 = fiboLow + range * (InpFibo_Level1 / 100.0);
+    double level2 = fiboLow + range * (InpFibo_Level2 / 100.0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Buy near Fibo support levels
+        if(close > level2)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Sell near Fibo resistance levels
+        if(close < level1)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Support/Resistance Levels                              |
+//+------------------------------------------------------------------+
+void CalculateSRLevels()
+{
+    if(!InpUseSR)
+        return;
+    
+    double prices[];
+    ArrayResize(prices, InpSR_Lookback);
+    
+    for(int i = 0; i < InpSR_Lookback; i++)
+    {
+        prices[i] = iClose(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    supportLevel = 0;
+    resistanceLevel = 999999;
+    
+    // Find nearest support and resistance
+    for(int i = 0; i < InpSR_Lookback; i++)
+    {
+        double level = prices[i];
+        int touches = 0;
+        
+        for(int j = 0; j < InpSR_Lookback; j++)
+        {
+            if(MathAbs(prices[j] - level) <= InpSR_Zone)
+                touches++;
+        }
+        
+        if(touches >= InpSR_TouchCount)
+        {
+            if(level < close && level > supportLevel)
+                supportLevel = level;
+            if(level > close && level < resistanceLevel)
+                resistanceLevel = level;
+        }
+    }
+}
+
+bool CheckSRFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSR)
+        return true;
+    
+    CalculateSRLevels();
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Don't buy too close to resistance
+        if(resistanceLevel > 0 && MathAbs(close - resistanceLevel) < atr[0])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Don't sell too close to support
+        if(supportLevel > 0 && MathAbs(close - supportLevel) < atr[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Drawdown Protection                                              |
+//+------------------------------------------------------------------+
+bool CheckDrawdownProtection()
+{
+    if(!InpUseDD)
+        return true;
+    
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    
+    // Update peak balance
+    if(balance > peakBalance)
+    {
+        peakBalance = balance;
+        ddRecoveryMode = false;
+    }
+    
+    // Calculate current drawdown
+    if(peakBalance > 0)
+        currentDrawdown = ((peakBalance - balance) / peakBalance) * 100;
+    
+    // Check if max DD exceeded
+    if(currentDrawdown >= InpMaxDD_Percent)
+    {
+        ddRecoveryMode = true;
+        Print("⛔ Max Drawdown aşıldı: ", DoubleToString(currentDrawdown, 2), "%");
+        return false;
+    }
+    
+    // Recovery mode: wait until recovered
+    if(ddRecoveryMode)
+    {
+        double recovery = ((peakBalance - balance) / peakBalance) * 100;
+        if(recovery > InpMaxDD_Percent * (1 - InpDD_Recovery / 100))
+        {
+            return false;
+        }
+        ddRecoveryMode = false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Equity Curve Trading                                             |
+//+------------------------------------------------------------------+
+bool CheckEquityCurveFilter()
+{
+    if(!InpUseEquity)
+        return true;
+    
+    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+    
+    // Add to history
+    int size = ArraySize(equityHistory);
+    if(size >= InpEquity_MA)
+    {
+        for(int i = 0; i < size - 1; i++)
+            equityHistory[i] = equityHistory[i + 1];
+        equityHistory[size - 1] = equity;
+    }
+    else
+    {
+        ArrayResize(equityHistory, size + 1);
+        equityHistory[size] = equity;
+    }
+    
+    // Calculate equity MA
+    if(ArraySize(equityHistory) < InpEquity_MA)
+        return true;
+    
+    double sum = 0;
+    for(int i = 0; i < InpEquity_MA; i++)
+        sum += equityHistory[ArraySize(equityHistory) - 1 - i];
+    double equityMA = sum / InpEquity_MA;
+    
+    // Only trade if equity is above MA (winning streak)
+    if(InpEquity_AboveMA && equity < equityMA)
+    {
+        Print("⚠️ Equity MA altında, işlem engellendi");
+        return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Time-Based Exit Management                                       |
+//+------------------------------------------------------------------+
+void CheckTimeBasedExit()
+{
+    if(!InpUseTimeExit)
+        return;
+    
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!posInfo.SelectByIndex(i))
+            continue;
+        
+        if(posInfo.Symbol() != _Symbol || posInfo.Magic() != InpMagicNumber)
+            continue;
+        
+        datetime openTime = posInfo.Time();
+        int hoursHeld = (int)((TimeCurrent() - openTime) / 3600);
+        
+        // Max hold time exit
+        if(hoursHeld >= InpMaxHoldHours)
+        {
+            trade.PositionClose(posInfo.Ticket());
+            Print("⏰ Zaman aşımı kapatma: ", posInfo.Ticket(), " (", hoursHeld, " saat)");
+            continue;
+        }
+        
+        // Friday exit
+        if(dt.day_of_week == 5 && dt.hour >= InpFridayExitHour)
+        {
+            trade.PositionClose(posInfo.Ticket());
+            Print("📅 Cuma kapatma: ", posInfo.Ticket());
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Grid Trading Management                                          |
+//+------------------------------------------------------------------+
+void CheckGridTrading(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGrid)
+        return;
+    
+    if(CountOpenPositions() == 0)
+    {
+        gridLevel = 0;
+        return;
+    }
+    
+    if(gridLevel >= InpGrid_Levels)
+        return;
+    
+    // Check if we need to add grid position
+    double lastPrice = 0;
+    ENUM_POSITION_TYPE lastType = POSITION_TYPE_BUY;
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!posInfo.SelectByIndex(i))
+            continue;
+        
+        if(posInfo.Symbol() != _Symbol || posInfo.Magic() != InpMagicNumber)
+            continue;
+        
+        if(posInfo.Time() > (datetime)lastPrice)
+        {
+            lastPrice = posInfo.PriceOpen();
+            lastType = posInfo.PositionType();
+        }
+    }
+    
+    double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    double gridDistance = InpGrid_Distance * point * 10;
+    
+    // Check if price moved grid distance against us
+    bool addGrid = false;
+    if(lastType == POSITION_TYPE_BUY && currentPrice <= lastPrice - gridDistance)
+        addGrid = true;
+    if(lastType == POSITION_TYPE_SELL && currentPrice >= lastPrice + gridDistance)
+        addGrid = true;
+    
+    if(addGrid)
+    {
+        double baseLot = CalculateLotSize();
+        double gridLot = baseLot * MathPow(InpGrid_LotMult, gridLevel);
+        
+        double sl, tp;
+        ENUM_SIGNAL_TYPE gridSignal = lastType == POSITION_TYPE_BUY ? SIGNAL_BUY : SIGNAL_SELL;
+        CalculateSL_TP(gridSignal, sl, tp);
+        
+        if(PlaceMarketOrder(gridSignal, gridLot, sl, tp))
+        {
+            gridLevel++;
+            Print("📊 Grid pozisyon eklendi: Level ", gridLevel);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Initialize New Indicators in OnInit                              |
+//+------------------------------------------------------------------+
+void InitNewIndicators()
+{
+    ENUM_MA_METHOD maMethod = (ENUM_MA_METHOD)InpMA_Method;
+    
+    if(InpUseBB)
+        handleBB = iBands(_Symbol, PERIOD_CURRENT, InpBB_Period, 0, InpBB_Deviation, PRICE_CLOSE);
+    
+    if(InpUseMACD)
+        handleMACD = iMACD(_Symbol, PERIOD_CURRENT, InpMACD_Fast, InpMACD_Slow, InpMACD_Signal, PRICE_CLOSE);
+    
+    if(InpUseStoch)
+        handleStoch = iStochastic(_Symbol, PERIOD_CURRENT, InpStoch_K, InpStoch_D, InpStoch_Slowing, MODE_SMA, STO_LOWHIGH);
+    
+    // Set arrays as series
+    ArraySetAsSeries(bbUpper, true);
+    ArraySetAsSeries(bbMiddle, true);
+    ArraySetAsSeries(bbLower, true);
+    ArraySetAsSeries(macdMain, true);
+    ArraySetAsSeries(macdSignal, true);
+    ArraySetAsSeries(stochK, true);
+    ArraySetAsSeries(stochD, true);
+    
+    peakBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All 10 New Filters                                         |
+//+------------------------------------------------------------------+
+bool ApplyNew10Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckBBFilter(signal))
+        return false;
+    
+    if(!CheckMACDFilter(signal))
+        return false;
+    
+    if(!CheckStochFilter(signal))
+        return false;
+    
+    if(!CheckFiboFilter(signal))
+        return false;
+    
+    if(!CheckSRFilter(signal))
+        return false;
+    
+    if(!CheckDrawdownProtection())
+        return false;
+    
+    if(!CheckEquityCurveFilter())
+        return false;
     
     return true;
 }
