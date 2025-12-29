@@ -668,8 +668,53 @@ input group "=== ULTIMATE TRADING SCORE ==="
 input bool     InpUseUltScore      = false;        // Ultimate Score Kullan
 input double   InpUS_MinScore      = 70.0;         // Min Score (0-100)
 
+input group "=== PARABOLIC SAR PRO ==="
+input bool     InpUseSARPro        = true;         // SAR Pro Kullan
+input double   InpSARPro_Step      = 0.02;         // Step
+input double   InpSARPro_Max       = 0.2;          // Maximum
 
-// New module handles
+input group "=== SUPERTREND PRO ==="
+input bool     InpUseSTpro         = true;         // ST Pro Kullan
+input int      InpSTpro_Period     = 10;           // ATR Periyodu
+input double   InpSTpro_Mult       = 3.0;          // Multiplier
+
+input group "=== ADX WILDER ==="
+input bool     InpUseADXWilder     = true;         // ADX Wilder Kullan
+input int      InpADXW_Period      = 14;           // Periyot
+input double   InpADXW_Level       = 25.0;         // Trend Level
+
+input group "=== STOCHASTIC DIVERGENCE ==="
+input bool     InpUseStochDiv      = true;         // Stoch Div Kullan
+input int      InpStochDiv_K       = 14;           // %K Periyodu
+input int      InpStochDiv_D       = 3;            // %D Periyodu
+
+input group "=== BB WIDTH ==="
+input bool     InpUseBBWidth       = true;         // BB Width Kullan
+input int      InpBBW_Period       = 20;           // Periyot
+input double   InpBBW_MinWidth     = 0.001;        // Min Width
+
+input group "=== ATR PERCENTILE ==="
+input bool     InpUseATRPerc       = true;         // ATR Perc Kullan
+input int      InpATRP_Period      = 100;          // Lookback
+input double   InpATRP_Min         = 25.0;         // Min Percentile
+
+input group "=== VOLUME PROFILE ==="
+input bool     InpUseVolProfile    = true;         // Vol Profile Kullan
+input int      InpVP_Period        = 50;           // Periyot
+
+input group "=== MARKET MOMENTUM ==="
+input bool     InpUseMktMom        = true;         // Market Mom Kullan
+input int      InpMM_Period        = 20;           // Periyot
+
+input group "=== SIGNAL CONFLUENCE ==="
+input bool     InpUseConfluence    = true;         // Confluence Kullan
+input int      InpConf_MinSignals  = 3;            // Min Sinyal Sayısı
+
+input group "=== AI MASTER SCORE ==="
+input bool     InpUseAIMaster      = false;        // AI Master Kullan
+input double   InpAIM_MinScore     = 75.0;         // Min Score (0-100)
+input int      InpAIM_Layers       = 5;            // AI Layers
+
 int handleRSI;
 int handleVolume;
 int handleMTF_MA1, handleMTF_MA5;
@@ -848,6 +893,18 @@ bool htTrend = true;
 double waddahValue = 0, waddahExp = 0;
 double rrRatio = 0;
 double ultScore = 0;
+
+// NEW v13 VALUES - ULTRA 10
+double sarProValue = 0;
+double stProUp = 0, stProDown = 0;
+double adxWValue = 0, diPlusW = 0, diMinusW = 0;
+bool stochDivBull = false, stochDivBear = false;
+double bbWidth = 0;
+double atrPercentile = 0;
+double volProfilePOC = 0;
+double mktMomValue = 0;
+int confSignals = 0;
+double aiMasterScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -6737,6 +6794,392 @@ bool ApplyV12Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckUltScoreFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        ULTRA v13 MODÜL FONKSIYONLARI (10 MODUL) - 128 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Parabolic SAR Pro Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckSARProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSARPro)
+        return true;
+    
+    // Manual SAR calculation
+    static bool sarLong = true;
+    static double sarValue = 0;
+    static double ep = 0;
+    static double af = 0.02;
+    
+    double high = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double low = iLow(_Symbol, PERIOD_CURRENT, 0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(sarValue == 0) sarValue = low;
+    
+    if(sarLong)
+    {
+        sarValue = sarValue + af * (ep - sarValue);
+        if(high > ep) { ep = high; af = MathMin(af + InpSARPro_Step, InpSARPro_Max); }
+        if(low < sarValue) { sarLong = false; sarValue = ep; ep = low; af = InpSARPro_Step; }
+    }
+    else
+    {
+        sarValue = sarValue - af * (sarValue - ep);
+        if(low < ep) { ep = low; af = MathMin(af + InpSARPro_Step, InpSARPro_Max); }
+        if(high > sarValue) { sarLong = true; sarValue = ep; ep = high; af = InpSARPro_Step; }
+    }
+    
+    sarProValue = sarValue;
+    
+    if(signal == SIGNAL_BUY && !sarLong)
+        return false;
+    if(signal == SIGNAL_SELL && sarLong)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Supertrend Pro Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckSTproFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSTpro)
+        return true;
+    
+    double atrVal = atr[0];
+    double hl2 = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0)) / 2;
+    
+    stProUp = hl2 + (atrVal * InpSTpro_Mult);
+    stProDown = hl2 - (atrVal * InpSTpro_Mult);
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    static bool trend = true;
+    
+    if(close > stProUp) trend = true;
+    else if(close < stProDown) trend = false;
+    
+    if(signal == SIGNAL_BUY && !trend)
+        return false;
+    if(signal == SIGNAL_SELL && trend)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ADX Wilder Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckADXWilderFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseADXWilder)
+        return true;
+    
+    double sumDX = 0, sumDIp = 0, sumDIm = 0;
+    
+    for(int i = 0; i < InpADXW_Period; i++)
+    {
+        double tr = MathMax(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i),
+                   MathMax(MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1)),
+                          MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1))));
+        
+        double pdm = iHigh(_Symbol, PERIOD_CURRENT, i) - iHigh(_Symbol, PERIOD_CURRENT, i + 1);
+        double mdm = iLow(_Symbol, PERIOD_CURRENT, i + 1) - iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        if(pdm < 0) pdm = 0;
+        if(mdm < 0) mdm = 0;
+        if(pdm > mdm) mdm = 0;
+        else pdm = 0;
+        
+        diPlusW += tr > 0 ? pdm / tr * 100 : 0;
+        diMinusW += tr > 0 ? mdm / tr * 100 : 0;
+    }
+    
+    diPlusW /= InpADXW_Period;
+    diMinusW /= InpADXW_Period;
+    adxWValue = (diPlusW + diMinusW) > 0 ? MathAbs(diPlusW - diMinusW) / (diPlusW + diMinusW) * 100 : 0;
+    
+    if(adxWValue < InpADXW_Level)
+        return false;
+    
+    if(signal == SIGNAL_BUY && diPlusW < diMinusW)
+        return false;
+    if(signal == SIGNAL_SELL && diPlusW > diMinusW)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Stochastic Divergence Filter                                     |
+//+------------------------------------------------------------------+
+bool CheckStochDivFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStochDiv)
+        return true;
+    
+    double stoch0 = 0, stoch1 = 0;
+    double highest = 0, lowest = 999999;
+    
+    for(int i = 0; i < InpStochDiv_K; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    stoch0 = (highest - lowest) > 0 ? (iClose(_Symbol, PERIOD_CURRENT, 0) - lowest) / (highest - lowest) * 100 : 50;
+    
+    highest = 0; lowest = 999999;
+    for(int i = 10; i < InpStochDiv_K + 10; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    stoch1 = (highest - lowest) > 0 ? (iClose(_Symbol, PERIOD_CURRENT, 10) - lowest) / (highest - lowest) * 100 : 50;
+    
+    double price0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double price1 = iClose(_Symbol, PERIOD_CURRENT, 10);
+    
+    stochDivBull = (price0 < price1 && stoch0 > stoch1);
+    stochDivBear = (price0 > price1 && stoch0 < stoch1);
+    
+    if(signal == SIGNAL_BUY && stochDivBear)
+        return false;
+    if(signal == SIGNAL_SELL && stochDivBull)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| BB Width Filter                                                  |
+//+------------------------------------------------------------------+
+bool CheckBBWidthFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBBWidth)
+        return true;
+    
+    double sum = 0, sumDev = 0;
+    for(int i = 0; i < InpBBW_Period; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double middle = sum / InpBBW_Period;
+    
+    for(int i = 0; i < InpBBW_Period; i++)
+        sumDev += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - middle, 2);
+    double stdDev = MathSqrt(sumDev / InpBBW_Period);
+    
+    bbWidth = stdDev * 2 / middle;
+    
+    if(bbWidth < InpBBW_MinWidth)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ATR Percentile Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckATRPercFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseATRPerc)
+        return true;
+    
+    double currentATR = atr[0];
+    int count = 0;
+    
+    for(int i = 1; i < InpATRP_Period; i++)
+    {
+        double tr = MathMax(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i),
+                   MathMax(MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1)),
+                          MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1))));
+        if(currentATR > tr) count++;
+    }
+    
+    atrPercentile = (double)count / InpATRP_Period * 100;
+    
+    if(atrPercentile < InpATRP_Min)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Volume Profile Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckVolProfileFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVolProfile)
+        return true;
+    
+    double maxVol = 0;
+    volProfilePOC = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    for(int i = 0; i < InpVP_Period; i++)
+    {
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        if(vol > maxVol)
+        {
+            maxVol = (double)vol;
+            volProfilePOC = (iHigh(_Symbol, PERIOD_CURRENT, i) + iLow(_Symbol, PERIOD_CURRENT, i)) / 2;
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < volProfilePOC)
+        return false;
+    if(signal == SIGNAL_SELL && close > volProfilePOC)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Market Momentum Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckMktMomFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMktMom)
+        return true;
+    
+    double sumChange = 0;
+    for(int i = 0; i < InpMM_Period; i++)
+        sumChange += iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+    
+    mktMomValue = sumChange / InpMM_Period;
+    
+    if(signal == SIGNAL_BUY && mktMomValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && mktMomValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Signal Confluence Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckConfluenceFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseConfluence)
+        return true;
+    
+    confSignals = 0;
+    
+    // Count confirming signals
+    if(ma1[0] > ma3[0] && signal == SIGNAL_BUY) confSignals++;
+    if(ma1[0] < ma3[0] && signal == SIGNAL_SELL) confSignals++;
+    
+    if(ArraySize(rsi) > 0 && rsi[0] > 50 && signal == SIGNAL_BUY) confSignals++;
+    if(ArraySize(rsi) > 0 && rsi[0] < 50 && signal == SIGNAL_SELL) confSignals++;
+    
+    if(htTrend && signal == SIGNAL_BUY) confSignals++;
+    if(!htTrend && signal == SIGNAL_SELL) confSignals++;
+    
+    if(kamaValue > kamaPrev && signal == SIGNAL_BUY) confSignals++;
+    if(kamaValue < kamaPrev && signal == SIGNAL_SELL) confSignals++;
+    
+    if(tsiValue > 0 && signal == SIGNAL_BUY) confSignals++;
+    if(tsiValue < 0 && signal == SIGNAL_SELL) confSignals++;
+    
+    if(confSignals < InpConf_MinSignals)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| AI Master Score Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckAIMasterFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAIMaster)
+        return true;
+    
+    // Comprehensive AI scoring with multiple layers
+    double features[20];
+    int fCount = 0;
+    
+    features[fCount++] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    features[fCount++] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    features[fCount++] = kamaValue > kamaPrev ? 1.0 : -1.0;
+    features[fCount++] = tsiValue / 100.0;
+    features[fCount++] = rmiValue / 100.0;
+    features[fCount++] = smiErgValue / 100.0;
+    features[fCount++] = chopIndex < 50 ? 1.0 : -1.0;
+    features[fCount++] = (double)confSignals / 5.0;
+    features[fCount++] = mktMomValue > 0 ? 1.0 : -1.0;
+    features[fCount++] = htTrend ? 1.0 : -1.0;
+    
+    // Multi-layer processing
+    double layer1[10], layer2[10];
+    
+    for(int j = 0; j < InpAIM_Layers && j < 10; j++)
+    {
+        layer1[j] = 0;
+        for(int i = 0; i < fCount; i++)
+            layer1[j] += features[i] * (0.1 + 0.05 * ((i * j) % 7));
+        layer1[j] = MathTanh(layer1[j]);
+    }
+    
+    for(int j = 0; j < InpAIM_Layers && j < 10; j++)
+    {
+        layer2[j] = 0;
+        for(int i = 0; i < InpAIM_Layers && i < 10; i++)
+            layer2[j] += layer1[i] * (0.15 + 0.05 * ((i + j) % 5));
+        layer2[j] = MathTanh(layer2[j]);
+    }
+    
+    aiMasterScore = 0;
+    for(int j = 0; j < InpAIM_Layers && j < 10; j++)
+        aiMasterScore += layer2[j] * (0.2 + 0.1 * (j % 3));
+    aiMasterScore = (MathTanh(aiMasterScore) + 1) / 2 * 100;
+    
+    if(aiMasterScore < InpAIM_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v13 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV13Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckSARProFilter(signal))
+        return false;
+    
+    if(!CheckSTproFilter(signal))
+        return false;
+    
+    if(!CheckADXWilderFilter(signal))
+        return false;
+    
+    if(!CheckStochDivFilter(signal))
+        return false;
+    
+    if(!CheckBBWidthFilter(signal))
+        return false;
+    
+    if(!CheckATRPercFilter(signal))
+        return false;
+    
+    if(!CheckVolProfileFilter(signal))
+        return false;
+    
+    if(!CheckMktMomFilter(signal))
+        return false;
+    
+    if(!CheckConfluenceFilter(signal))
+        return false;
+    
+    if(!CheckAIMasterFilter(signal))
         return false;
     
     return true;
