@@ -1,0 +1,20 @@
+{
+    "mcpServers": {
+        "filesystem": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@anthropic/mcp-filesystem-server",
+                "C:/Users/win11.2025/Documents",
+                "C:/Users/win11.2025/Desktop/antygravty google id"
+            ]
+        },
+        "memory": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@anthropic/mcp-memory"
+            ]
+        }
+    }
+}

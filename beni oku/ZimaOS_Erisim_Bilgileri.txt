@@ -1,99 +1,70 @@
 =============================================================
-    ZimaOS SİSTEM ERİŞİM BİLGİLERİ VE LLM YAPILANDIRMASI
-    Oluşturulma: 29 Aralık 2025
-    Son Güncelleme: 29 Aralık 2025, 00:25
+       ZimaOS ERİŞİM BİLGİLERİ
+       Güncellenme: 29 Aralık 2025
 =============================================================
 
 ╔═══════════════════════════════════════════════════════════╗
-║                    SİSTEM BİLGİLERİ                       ║
-╠═══════════════════════════════════════════════════════════╣
-║ IP Adresi: 192.168.1.43                                   ║
-║ Sistem: ZimaOS v1.5.3 (ZimaCube)                          ║
-║ Kernel: Linux 6.12.25                                     ║
-║ RAM: 15GB (13GB kullanılabilir)                           ║
+║              YENİ HDD KURULUMU (512GB)                     ║
 ╚═══════════════════════════════════════════════════════════╝
 
-=============================================================
-                    ERİŞİM BİLGİLERİ
-=============================================================
-
-1. WEB ARAYÜZÜ
-   URL: http://192.168.1.43
-   Durum: AKTİF ✓
-
-2. WEB TERMİNAL (Port 2222)
-   URL: http://192.168.1.43:2222
-   Kullanıcı: root
-   Şifre: [GEREKMİYOR]
-   Durum: AKTİF ✓
-
-3. TTYD TERMİNAL (Port 7681)
-   URL: http://192.168.1.43:7681
-   Kullanıcı: root
-   Şifre: [GEREKMİYOR]
-   Durum: AKTİF ✓
-
-4. PORTAINER YÖNETİM PANELİ
-   URL: http://192.168.1.43:9000
-   HTTPS: https://192.168.1.43:9443
-   Durum: AKTİF ✓
-
-5. OLLAMA LLM API
-   URL: http://192.168.1.43:11434
-   Versiyon: 0.9.5
-   Durum: AKTİF ✓
+SİSTEM BİLGİSİ:
+  IP Adresi: 192.168.1.43
+  Depolama: 512 GB HDD
+  Kullanıcı: Nas344mehmet2026
+  Şifre: 1234567890
 
 =============================================================
-                    DİSK DURUMU
+              ERİŞİM ADRESLERİ
 =============================================================
 
-SORUN: /DATA bölümü %100 DOLU (98GB)
-
-ÇÖZÜM: Harici disklere model yükleme
-   - Elements: 8.4 TB (önerilen)
-   - Yeni Birim: 749 GB
-
-=============================================================
-                    DOCKER KONTEYNERLARI
-=============================================================
-
-1. ollama (ollama/ollama:0.9.5)
-   Port: 11434
-   Durum: ÇALIŞIYOR ✓
-
-2. ttydbridge (cp0204/ttydbridge:v0.0.3)
-   Portlar: 2222, 7681
-   Durum: ÇALIŞIYOR ✓
-
-3. portainer (portainer/portainer-ce:2.31.3)
-   Portlar: 9000, 9443
-   Durum: ÇALIŞIYOR ✓
+Web Arayüzü:    http://192.168.1.43
+SSH Terminal:   http://192.168.1.43:2222
+Portainer:      http://192.168.1.43:9000
+Open WebUI:     http://192.168.1.43:3000
+Ollama API:     http://192.168.1.43:11434
+n8n:            http://192.168.1.43:5678
+Uptime Kuma:    http://192.168.1.43:3001
+ChromaDB:       http://192.168.1.43:8000
 
 =============================================================
-                    OLLAMA API KOMUTLARI
+              GİRİŞ BİLGİLERİ
 =============================================================
 
-Model Listesi:
-  curl http://192.168.1.43:11434/api/tags
+TÜM SERVİSLER:
+  Kullanıcı: Nas344mehmet2026
+  Şifre:     1234567890
 
-Model İndirme:
-  curl http://192.168.1.43:11434/api/pull -d '{"name":"qwen2.5:0.5b"}'
+SSH / ROOT:
+  Kullanıcı: root
+  Şifre:     1234567890
 
-LLM ile Konuşma:
-  curl http://192.168.1.43:11434/api/generate -d '{
-    "model":"MODEL_ADI",
-    "prompt":"Mesajınız",
-    "stream":false
-  }'
-
-=============================================================
-                    SONRAKİ ADIMLAR
-=============================================================
-
-[ ] Ollama model dizinini harici diske taşı
-[ ] LLM modellerini indir (qwen2.5, llama3.2)
-[ ] LLM Ordusu Başkanı'nı yapılandır
+PostgreSQL:
+  Kullanıcı: Nas344mehmet2026
+  Şifre:     1234567890
+  Database:  llm_ordusu
 
 =============================================================
-              Antigravity AI tarafından oluşturuldu
+              KURULUM KOMUTU
+=============================================================
+
+ZimaOS web terminalinde (http://192.168.1.43:2222) çalıştır:
+
+  curl -O https://raw.githubusercontent.com/.../zimaos-512gb-setup.sh
+  chmod +x zimaos-512gb-setup.sh
+  ./zimaos-512gb-setup.sh
+
+VEYA scripti manuel olarak kopyala ve çalıştır.
+
+=============================================================
+              DOCKER SERVİSLERİ
+=============================================================
+
+- Portainer (Docker yönetimi)
+- Ollama (LLM sunucusu)
+- Open WebUI (ChatGPT arayüzü)
+- n8n (Otomasyon)
+- Uptime Kuma (Monitoring)
+- PostgreSQL (Database)
+- ChromaDB (Vector DB)
+
 =============================================================

@@ -1,0 +1,154 @@
+=============================================================
+       LLM AKILLI HALE GETİRME REHBERİ
+       RAG + Fine-tune + MCP Yöntemleri
+       29 Aralık 2025
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║  SORUN: Model saçma cevaplar veriyor                      ║
+╠═══════════════════════════════════════════════════════════╣
+║  ÇÖZÜM 1: RAG (Retrieval-Augmented Generation)            ║
+║  ÇÖZÜM 2: Fine-tuning (LoRA)                              ║
+║  ÇÖZÜM 3: MCP (Model Context Protocol)                    ║
+╚═══════════════════════════════════════════════════════════╝
+
+=============================================================
+  1. RAG (EN HIZLI VE ETKİLİ ÇÖZÜM)
+=============================================================
+
+RAG = Modelin kendi bilgisi yerine senin belgelerini kullanması
+
+NASIL ÇALIŞIR:
+  1. Belgelerini vektör veritabanına yükle (ChromaDB)
+  2. Soru sorulduğunda ilgili belgeler bulunur
+  3. Model, bu belgelerle birlikte cevap üretir
+
+GEREKLI ARAÇLAR:
+  • Ollama (✓ kurulu)
+  • ChromaDB (vektör veritabanı)
+  • Python + LangChain
+
+KURULUM:
+━━━━━━━━━━━━━━━━━━━━━
+
+# 1. Python paketlerini kur
+pip install chromadb langchain langchain-community ollama
+
+# 2. Embedding modeli indir
+ollama pull nomic-embed-text
+
+# 3. RAG scripti çalıştır (aşağıda)
+
+=============================================================
+  2. FINE-TUNING (Model Özelleştirme)
+=============================================================
+
+Fine-tuning = Modeli kendi verilerinle eğitmek
+
+YÖNTEMLER:
+  • LoRA (Düşük kaynak, hızlı)
+  • QLoRA (Daha az bellek)
+  • Full Fine-tune (Yüksek kaynak)
+
+ADIMLAR:
+━━━━━━━━━━━━━━━━━━━━━
+
+1. Eğitim verisi hazırla (JSONL formatı):
+   {"prompt": "Soru", "completion": "Cevap"}
+
+2. Unsloth veya PEFT ile LoRA eğitimi:
+   - Google Colab (ücretsiz GPU)
+   - Local (GPU gerekli)
+
+3. LoRA adaptör -> GGUF dönüştür
+
+4. Ollama'ya Modelfile ile ekle:
+   FROM base-model
+   ADAPTER ./lora-adapter.gguf
+
+=============================================================
+  3. MCP (Model Context Protocol)
+=============================================================
+
+MCP = LLM'e harici araçlar ve veri kaynakları bağlama
+
+LM STUDIO MCP YAPILANDIRMASI:
+━━━━━━━━━━━━━━━━━━━━━
+
+Dosya: ~/.lmstudio/mcp.json
+
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem-server", "C:/Users/win11.2025/Documents"]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-brave-search"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-memory"]
+    }
+  }
+}
+
+MCP SUNUCULARI:
+  • filesystem - Dosya sistemi erişimi
+  • brave-search - Web araması
+  • memory - Kalıcı hafıza
+  • github - GitHub entegrasyonu
+  • sqlite - Veritabanı erişimi
+
+=============================================================
+  HIZLI ÇÖZÜM: SYSTEM PROMPT İYİLEŞTİRME
+=============================================================
+
+Modelin saçma cevap vermesinin nedeni:
+  1. Yanlış system prompt
+  2. Düşük kaliteli model
+  3. Context eksikliği
+
+OLLAMA İÇİN İYİLEŞTİRİLMİŞ PROMPT:
+━━━━━━━━━━━━━━━━━━━━━
+
+ollama run qwen2.5:0.5b --system "Sen akıllı bir asistansın. Türkçe cevap ver. Kısa ve öz ol. Bilmediğin konularda 'Bilmiyorum' de."
+
+MODELFILE OLUŞTURMA:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Modelfile içeriği:
+FROM qwen2.5:0.5b
+
+SYSTEM """
+Sen 344Mehmet'in AI asistanısın.
+Türkçe cevap ver.
+Kısa, net ve doğru bilgi ver.
+Emin olmadığın konularda "Bilmiyorum" de.
+Kod örnekleri ver.
+"""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+
+# Kaydet ve oluştur:
+ollama create my-assistant -f Modelfile
+
+=============================================================
+  ÖNERİLEN DAHA GÜÇLÜ MODELLER
+=============================================================
+
+| Model             | Boyut  | Kalite | Hız  |
+|-------------------|--------|--------|------|
+| qwen2.5:0.5b      | 397MB  | ⭐⭐    | ⚡⚡⚡ |
+| qwen2.5:1.5b      | 934MB  | ⭐⭐⭐  | ⚡⚡  |
+| llama3.2:1b       | 1.3GB  | ⭐⭐⭐  | ⚡⚡  |
+| phi3:mini         | 2.3GB  | ⭐⭐⭐⭐ | ⚡   |
+| qwen2.5:7b        | 4.4GB  | ⭐⭐⭐⭐⭐| ⚡   |
+
+Daha iyi cevaplar için daha büyük model indir:
+  ollama pull qwen2.5:1.5b
+  ollama pull phi3:mini
+
+=============================================================

@@ -1,0 +1,270 @@
+=============================================================
+       ZimaOS MESH AĞ VE SÜRÜCÜ YÖNETİM REHBERİ
+       Nas344mehmet2026 - 29 Aralık 2025
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║  MESH VPN SEÇENEKLERİ                                      ║
+╠═══════════════════════════════════════════════════════════╣
+║  1. ZeroTier (Dahili)                                      ║
+║  2. Tailscale (WireGuard tabanlı)                         ║
+║  3. WireGuard Easy                                         ║
+║  4. OpenVPN                                                ║
+╚═══════════════════════════════════════════════════════════╝
+
+=============================================================
+  1. ZEROTIER (ZimaOS DAHİLİ ENTEGRASYON)
+=============================================================
+
+✅ ÖNERİLEN: ZimaOS'ta yerleşik ZeroTier desteği var!
+
+AVANTAJLAR:
+• Sıfır yapılandırma
+• NAT geçişi otomatik
+• Port yönlendirme gereksiz
+• Tüm cihazlar aynı ağda görünür
+
+KURULUM ADIMLARI:
+━━━━━━━━━━━━━━━━━━━━━
+
+1. ZimaOS Dashboard aç: http://192.168.1.43
+2. Network > Remote Login git
+3. "Remote Login ID" (ZeroTier Network ID) al
+4. İstemci cihazlarda Zima Client kur
+5. Network ID ile bağlan
+
+ZIMA CLIENT İNDİR:
+• Windows: https://github.com/IceWhaleTech/Zima-Client
+• macOS: App Store'dan "Zima"
+• iOS/Android: Uygulama mağazasından
+
+=============================================================
+  2. TAILSCALE (WIREGUARD TABANLI MESH VPN)
+=============================================================
+
+Tailscale = Basitleştirilmiş WireGuard mesh ağı
+
+KURULUM (ZimaOS App Store):
+━━━━━━━━━━━━━━━━━━━━━
+
+1. ZimaOS Dashboard > App Store aç
+2. "Tailscaled" ara ve kur
+3. Tailscale arayüzünü aç: http://192.168.1.43:XXXX
+4. Google/GitHub ile giriş yap
+5. Cihaz otomatik ağa eklenir
+
+DOCKER İLE KURULUM:
+━━━━━━━━━━━━━━━━━━━━━
+
+docker run -d \
+  --name tailscale \
+  --hostname zimaos-nas \
+  --cap-add NET_ADMIN \
+  --cap-add SYS_MODULE \
+  -v /dev/net/tun:/dev/net/tun \
+  -v tailscale_data:/var/lib/tailscale \
+  -e TS_AUTHKEY=tskey-auth-XXXXXXX \
+  -e TS_STATE_DIR=/var/lib/tailscale \
+  -e TS_ROUTES=192.168.1.0/24 \
+  --restart always \
+  tailscale/tailscale
+
+SUBNET ROUTER (Tüm LAN'a erişim):
+━━━━━━━━━━━━━━━━━━━━━
+
+# ZimaOS'u subnet router olarak ayarla
+tailscale up --advertise-routes=192.168.1.0/24
+
+# Tailscale admin panelinde rotayı onayla
+# https://login.tailscale.com/admin/machines
+
+EXIT NODE (Tüm internet trafiği ZimaOS üzerinden):
+━━━━━━━━━━━━━━━━━━━━━
+
+# ZimaOS'u exit node olarak ayarla
+tailscale up --advertise-exit-node
+
+# İstemcide exit node kullan
+tailscale up --exit-node=zimaos-nas
+
+=============================================================
+  3. WIREGUARD EASY (Docker ile)
+=============================================================
+
+DOCKER COMPOSE:
+━━━━━━━━━━━━━━━━━━━━━
+
+# docker-compose-wireguard.yml
+version: '3.8'
+
+services:
+  wg-easy:
+    image: weejewel/wg-easy
+    container_name: wg-easy
+    restart: always
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    volumes:
+      - wg_data:/etc/wireguard
+    environment:
+      - WG_HOST=SENIN_PUBLIC_IP_VEYA_DDNS
+      - PASSWORD=1234567890
+      - WG_PORT=51820
+      - WG_DEFAULT_ADDRESS=10.8.0.x
+      - WG_DEFAULT_DNS=1.1.1.1
+
+volumes:
+  wg_data:
+
+⚠️ PORT YÖNLENDİRME GEREKLİ:
+   Router'da UDP 51820 → 192.168.1.43:51820
+
+=============================================================
+  4. SÜRÜCÜ VE FİRMWARE YÖNETİMİ
+=============================================================
+
+ZimaOS GÜNCELLEME YÖNTEMLERİ:
+━━━━━━━━━━━━━━━━━━━━━
+
+YÖNTEM 1: OTA (Over-The-Air)
+─────────────────────────────
+1. Dashboard'da kırmızı nokta = güncelleme var
+2. Settings > System Update aç
+3. "Update" tıkla
+4. Sistem yeniden başlar
+
+YÖNTEM 2: Offline Güncelleme
+─────────────────────────────
+1. GitHub'dan RAUCB dosyası indir:
+   https://github.com/IceWhaleTech/ZimaOS/releases
+
+2. Dosyayı ZimaOS'a yükle:
+   /DATA/update/zimaos-update.raucb
+
+3. Sistem otomatik tarar ve günceller
+
+YÖNTEM 3: SSH ile Manuel Güncelleme
+─────────────────────────────
+ssh root@192.168.1.43
+apt update && apt upgrade -y
+reboot
+
+SÜRÜCÜ KONTROLÜ:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Yüklü kernel modüllerini listele
+lsmod
+
+# GPU sürücüsü kontrol
+lspci -k | grep -A 3 VGA
+
+# Ethernet sürücüsü
+ethtool -i eth0
+
+# Disk sürücüsü
+lsblk -o NAME,TYPE,SIZE,MODEL,SERIAL
+
+# PCI cihazları
+lspci -v
+
+# USB cihazları
+lsusb -v
+
+FİRMWARE GÜNCELLEME:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Linux-firmware paketini güncelle
+apt update
+apt install linux-firmware
+
+# AMD GPU firmware
+apt install firmware-amd-graphics
+
+# Realtek Ethernet firmware
+apt install firmware-realtek
+
+=============================================================
+  5. MESH AĞ İZLEME VE YÖNETİM
+=============================================================
+
+TAILSCALE DURUM KONTROLÜ:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Bağlı cihazları listele
+tailscale status
+
+# Ağ durumu
+tailscale netcheck
+
+# Ping testi
+tailscale ping <cihaz-adı>
+
+# DNS durumu
+tailscale dns status
+
+ZEROTIER DURUM KONTROLÜ:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Ağ listesi
+zerotier-cli listnetworks
+
+# Peer listesi
+zerotier-cli peers
+
+# Detaylı bilgi
+zerotier-cli info
+
+UPTIME KUMA İLE İZLEME:
+━━━━━━━━━━━━━━━━━━━━━
+
+Uptime Kuma'da mesh bağlantılarını izle:
+1. http://192.168.1.43:3001 aç
+2. "Add New Monitor" tıkla
+3. Tailscale IP'leri için ping monitörü ekle
+
+=============================================================
+  6. GÜVENLİK ÖNERİLERİ
+=============================================================
+
+✅ YAPILMASI GEREKENLER:
+• SSH şifresini güçlü tut
+• 2FA etkinleştir (Tailscale/ZeroTier)
+• Gereksiz portları kapat
+• Düzenli yedekleme yap
+• Güncellemeleri takip et
+
+❌ YAPILMAMASI GEREKENLER:
+• NAS'ı direkt internete açma
+• Varsayılan portları kullanma
+• Şifreleri paylaşma
+• Root şifresini zayıf tutma
+
+=============================================================
+  HIZLI BAŞLANGIÇ - ÖNERİLEN KURULUM
+=============================================================
+
+512GB NAS için önerilen mesh çözümü:
+
+SEÇENEK A: Zima Client + ZeroTier (En kolay)
+1. ZimaOS'ta Remote Login ID al
+2. Zima Client kur
+3. Bağlan!
+
+SEÇENEK B: Tailscale (Daha esnek)
+1. App Store'dan Tailscaled kur
+2. Giriş yap
+3. Subnet router olarak ayarla
+4. Tüm LAN erişimi kazan
+
+Kullanıcı: Nas344mehmet2026
+Şifre: 1234567890
+IP: 192.168.1.43
+
+=============================================================

@@ -1,0 +1,141 @@
+=============================================================
+       WINDOWS SİSTEM YÖNETİM REHBERİ
+       i7-4790 | 16GB DDR3 | Windows 11
+       29 Aralık 2025
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║  SİSTEM BİLGİLERİ                                          ║
+╚═══════════════════════════════════════════════════════════╝
+
+İşlemci: Intel Core i7-4790 (4C/8T, 3.6-4.0 GHz)
+Bellek: 16 GB DDR3
+Depolama: 512 GB
+İşletim Sistemi: Windows 11
+
+Ağ Adresleri:
+  Wi-Fi: 192.168.1.46
+  Ethernet: 192.168.1.62
+  ZeroTier: 10.147.20.32
+
+=============================================================
+  OLUŞTURULAN SCRİPTLER
+=============================================================
+
+1. Windows_Sistem_Yonetim.ps1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• DISM sistem imaj kontrolü
+• SFC sistem dosyaları taraması
+• Sürücü güncelleme kontrolü
+• Disk temizliği
+• Windows güncellemeleri
+• Ağ cihazı taraması
+• WinRM durumu
+
+Kullanım:
+  powershell -ExecutionPolicy Bypass -File .\Windows_Sistem_Yonetim.ps1
+
+─────────────────────────────────────────────────────────────
+
+2. Veri_Tasima_Script.ps1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Windows.old'dan veri taşıma
+• Ağ üzerinden PC'den taşıma
+• Harici diskten taşıma
+• ZimaOS NAS'tan taşıma
+• Robocopy ile güvenli kopyalama
+
+Kaynak Seçenekleri:
+  1. C:\Windows.old\Users
+  2. \\BilgisayarAdı\Paylaşım
+  3. E:\Users (Harici disk)
+  4. \\192.168.1.43\DATA (ZimaOS)
+
+Kullanım:
+  powershell -ExecutionPolicy Bypass -File .\Veri_Tasima_Script.ps1
+
+─────────────────────────────────────────────────────────────
+
+3. Ag_Yonetim_Script.ps1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Ağ taraması (192.168.1.0/24)
+• WinRM/PSRemoting yönetimi
+• Uzak bilgisayar bağlantısı
+• ZimaOS NAS durumu kontrolü
+• Ağ paylaşımları listesi
+
+Kullanım:
+  powershell -ExecutionPolicy Bypass -File .\Ag_Yonetim_Script.ps1
+
+=============================================================
+  AGDAKİ CİHAZLAR
+=============================================================
+
+┌──────────────────┬───────────────────────────────────────┐
+│ IP Adresi        │ Cihaz                                 │
+├──────────────────┼───────────────────────────────────────┤
+│ 192.168.1.1      │ Router/Gateway                        │
+│ 192.168.1.43     │ ZimaOS NAS (Nas344mehmet2026)         │
+│ 192.168.1.46     │ Bu Bilgisayar (Wi-Fi)                 │
+│ 192.168.1.62     │ Bu Bilgisayar (Ethernet)              │
+│ 192.168.1.102    │ Windows PC                            │
+│ 192.168.1.160    │ Mobil Cihaz                           │
+└──────────────────┴───────────────────────────────────────┘
+
+=============================================================
+  HIZLI KOMUTLAR
+=============================================================
+
+SİSTEM ONARIMI:
+  DISM /Online /Cleanup-Image /RestoreHealth
+  sfc /scannow
+
+SÜRÜCÜ GÜNCELLEMESİ:
+  Get-WindowsUpdate -Install -AcceptAll
+
+DİSK TEMİZLİĞİ:
+  cleanmgr /sagerun:1
+
+AĞ TARAMASI:
+  arp -a | Select-String "192.168.1"
+
+WinRM ETKİNLEŞTİRME:
+  Enable-PSRemoting -Force
+
+UZAK BAĞLANTI:
+  Enter-PSSession -ComputerName 192.168.1.102 -Credential (Get-Credential)
+
+ROBOCOPY VERİ KOPYALAMA:
+  robocopy "C:\Kaynak" "D:\Hedef" /E /Z /MT:8 /R:3 /W:5
+
+=============================================================
+  YEDEKLEME STRATEJİSİ
+=============================================================
+
+3-2-1 KURALI:
+• 3 kopya veri
+• 2 farklı ortam (PC + NAS)
+• 1 offsite (bulut/ZeroTier)
+
+ÖNERİLEN HEDEFLER:
+• ZimaOS NAS: \\192.168.1.43\DATA\Yedekler
+• OneDrive: Belgeler, Masaüstü
+• Harici Disk: Aylık tam yedek
+
+=============================================================
+  ERİŞİM BİLGİLERİ
+=============================================================
+
+ZimaOS NAS:
+  Dashboard: http://192.168.1.43
+  Ollama API: http://192.168.1.43:11434
+  Web Terminal: http://192.168.1.43:2222
+  Kullanıcı: Nas344mehmet2026
+  Şifre: 1234567890
+
+Bu Bilgisayar:
+  Wi-Fi: 192.168.1.46
+  Ethernet: 192.168.1.62
+  ZeroTier: 10.147.20.32
+
+=============================================================

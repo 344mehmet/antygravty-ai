@@ -1,0 +1,72 @@
+=============================================================
+       OLLAMA VE LM STUDIO DURUMU
+       29 Aralık 2025 - 05:45
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║  OLLAMA                                                    ║
+╚═══════════════════════════════════════════════════════════╝
+
+DURUM: ✅ ÇALIŞIYOR
+
+Kurulum: C:\Users\win11.2025\AppData\Local\Programs\Ollama\
+API: http://localhost:11434
+
+YÜKLÜ MODELLER:
+┌─────────────────┬─────────────┬───────────┐
+│ Model           │ ID          │ Boyut     │
+├─────────────────┼─────────────┼───────────┤
+│ qwen2.5:0.5b    │ a8b0c5157701│ 397 MB    │
+└─────────────────┴─────────────┴───────────┘
+
+KULLANIM:
+  Terminal: ollama run qwen2.5:0.5b
+  API: curl http://localhost:11434/api/generate
+
+EK MODEL İNDİRME:
+  ollama pull llama3.2:1b
+  ollama pull phi3:mini
+  ollama pull codellama:7b
+
+╔═══════════════════════════════════════════════════════════╗
+║  LM STUDIO                                                 ║
+╚═══════════════════════════════════════════════════════════╝
+
+DURUM: ✅ ÇALIŞIYOR (8 process)
+
+Kurulum: C:\Program Files\LM Studio\LM Studio.exe
+Veri: C:\Users\win11.2025\.lmstudio\
+
+KLASÖR YAPISI:
+  models/         - GGUF modelleri
+  conversations/  - Sohbet geçmişi
+  config-presets/ - Yapılandırmalar
+  server-logs/    - Sunucu logları
+
+KULLANIM:
+  1. LM Studio'yu aç
+  2. Sol menüden model indir (Discover)
+  3. Modeli yükle ve sohbet başlat
+
+ÖNERİLEN MODELLER:
+  - Qwen2.5-0.5B-Instruct (Q4_K_M)
+  - Phi-3-mini (Q4_K_M)
+  - Mistral-7B-Instruct (Q4_K_M)
+
+=============================================================
+  ENTEGRASYON
+=============================================================
+
+Ollama + LM Studio birlikte kullanılabilir:
+- LM Studio: GUI ile model deneme
+- Ollama: API ile otomasyon
+
+ZimaOS + Windows Entegrasyonu:
+- ZimaOS Ollama: http://192.168.1.43:11434
+- Windows Ollama: http://localhost:11434
+
+Telegram Bot Entegrasyonu:
+  FINANCIAL_ORCHESTRATOR.py dosyasında
+  OLLAMA_API = "http://localhost:11434" olarak güncelle
+
+=============================================================

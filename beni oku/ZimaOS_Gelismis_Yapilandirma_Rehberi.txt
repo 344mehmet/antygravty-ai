@@ -1,0 +1,338 @@
+=============================================================
+       ZimaOS GELİŞMİŞ YAPILANDIRMA REHBERİ
+       512GB HDD - Nas344mehmet2026
+       29 Aralık 2025
+=============================================================
+
+╔═══════════════════════════════════════════════════════════╗
+║  İÇİNDEKİLER                                              ║
+╠═══════════════════════════════════════════════════════════╣
+║  1. DISK KURULUMU                                          ║
+║  2. RAID YAPILANDIRMASI                                    ║
+║  3. ZFS DEPOLAMA HAVUZU                                    ║
+║  4. AMD RX580 GPU + OLLAMA                                 ║
+║  5. DOCKER VE VERİ YÖNETİMİ                               ║
+║  6. HARİCİ DEPOLAMA YÖNETİMİ                              ║
+║  7. YEDEKLEME STRATEJİLERİ                                ║
+╚═══════════════════════════════════════════════════════════╝
+
+=============================================================
+  1. DISK KURULUMU (ZimaCube/ZimaBoard)
+=============================================================
+
+3.5" SATA HDD KURULUMU:
+━━━━━━━━━━━━━━━━━━━━━
+1. Ön paneli mıknatıslardan ayırarak çıkarın
+2. Sarı butona basarak tepsinin kilidini açın
+3. Tepsiyi yavaşça dışarı çekin
+4. HDD'yi tepsiyle hizalayın (vida delikleri)
+5. 6-32 vidalarla sabitleyin
+6. Tepsiyi geri itin
+
+2.5" SATA SSD KURULUMU:
+━━━━━━━━━━━━━━━━━━━━━
+• M3 vidalar kullanın
+• Vida deliklerini hizalayın
+
+M.2 NVMe SSD KURULUMU (7. Bay):
+━━━━━━━━━━━━━━━━━━━━━
+1. 7. Bay'i çıkarın
+2. NVMe'yi 30-45° açıyla takın
+3. Tık sesi gelene kadar itin
+4. Vida ile sabitleyin
+
+⚠️ M key = PCIe x2/x4 destekler
+
+=============================================================
+  2. RAID YAPILANDIRMASI
+=============================================================
+
+ZimaOS RAID SEVİYELERİ:
+━━━━━━━━━━━━━━━━━━━━━
+
+┌─────────┬───────────┬──────────┬──────────────────────────┐
+│ RAID    │ Min Disk  │ Hız      │ Güvenlik                 │
+├─────────┼───────────┼──────────┼──────────────────────────┤
+│ RAID 0  │ 2         │ ⬆⬆⬆     │ ❌ Yok                    │
+│ RAID 1  │ 2         │ ➡        │ ✅ 1 disk arızası        │
+│ RAID 5  │ 3         │ ⬆⬆       │ ✅ 1 disk arızası        │
+│ RAID 6  │ 4         │ ⬆        │ ✅✅ 2 disk arızası      │
+└─────────┴───────────┴──────────┴──────────────────────────┘
+
+ZimaOS WEB ARAYÜZÜ İLE RAID OLUŞTURMA:
+1. Settings > Storage > Create Pool
+2. Diskleri seçin
+3. RAID seviyesini belirleyin (1, 5 veya 6)
+4. "Create" tıklayın
+
+RAID 6 KOMUT SATIRI İLE:
+  mdadm --create /dev/md0 --level=6 --raid-devices=4 \
+    /dev/sda /dev/sdb /dev/sdc /dev/sdd
+
+=============================================================
+  3. ZFS DEPOLAMA HAVUZU
+=============================================================
+
+ZFS AVANTAJLARI:
+• Copy-on-write (veri bütünlüğü)
+• Anlık görüntüler (snapshots)
+• Sıkıştırma ve veri tekilleştirme
+• RAID-Z1/Z2/Z3 desteği
+
+ZFS KURULUMU:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Diskleri listele
+lsblk
+
+# ZFS pool oluştur (tek disk)
+zpool create -f data_pool /dev/sdb
+
+# RAID-Z1 pool (2 disk arızası)
+zpool create -f nas_pool raidz1 /dev/sdb /dev/sdc /dev/sdd
+
+# ZFS dataset oluştur
+zfs create nas_pool/docker
+zfs create nas_pool/media
+zfs create nas_pool/backups
+
+# Sıkıştırmayı etkinleştir
+zfs set compression=lz4 nas_pool
+
+# Durumu kontrol et
+zpool status
+
+=============================================================
+  4. AMD RX580 GPU + OLLAMA (LLM HIZLANDIRMA)
+=============================================================
+
+⚠️ ÖNEMLİ: RX580 (Polaris) için resmi ROCm desteği sona erdi!
+   Ancak ROCm 5.7.1 ile hala çalıştırılabilir.
+
+YÖNTEM 1: ROCm 5.7.1 Docker ile Ollama
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 1. Mevcut Ollama'yı durdur
+docker stop ollama
+
+# 2. ROCm host container başlat
+docker run -d --name rocm-host \
+  --device=/dev/kfd \
+  --device=/dev/dri \
+  --group-add video \
+  docker.io/rocm/dev-ubuntu-22.04:5.7.1-complete \
+  sleep infinity
+
+# 3. Ollama GPU container başlat
+docker run -d --name ollama-gpu \
+  --device=/dev/kfd \
+  --device=/dev/dri \
+  --group-add video \
+  --volumes-from rocm-host \
+  -e HIP_PATH=/opt/rocm \
+  -e LD_LIBRARY_PATH=/opt/rocm/lib \
+  -p 11434:11434 \
+  -v /DATA/LLM-Ordusu/models/ollama:/root/.ollama \
+  ollama/ollama
+
+# 4. Model indir
+docker exec ollama-gpu ollama pull qwen2.5:0.5b
+
+
+YÖNTEM 2: Vulkan ile Ollama (Deneysel)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Vulkan desteği ile Ollama başlat
+docker run -d --name ollama-vulkan \
+  --device=/dev/dri \
+  -e OLLAMA_VULKAN=1 \
+  -p 11434:11434 \
+  -v /DATA/LLM-Ordusu/models/ollama:/root/.ollama \
+  ollama/ollama
+
+
+ÖNERİLEN MODELLER (8GB VRAM):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• qwen2.5:0.5b (390MB) - Hızlı
+• llama3.2:1b (1.3GB) - Dengeli
+• phi3:mini (2.3GB) - Akıllı
+• qwen2.5:7b (4.4GB) - Kapsamlı
+
+=============================================================
+  5. DOCKER VE VERİ YÖNETİMİ
+=============================================================
+
+DOCKER VOLUME YAPISI:
+━━━━━━━━━━━━━━━━━━━━━
+
+/DATA
+├── LLM-Ordusu
+│   ├── models
+│   │   ├── ollama      → Ollama modelleri
+│   │   └── huggingface → HF modelleri
+│   ├── databases
+│   │   ├── postgresql
+│   │   ├── mongodb
+│   │   └── vector-db   → ChromaDB
+│   └── agents
+│
+├── Yonetim-Merkezi
+│   ├── docker-compose
+│   ├── configs
+│   └── backups
+│
+├── Orkestra-Bot
+│   ├── exports
+│   └── articles
+│
+└── AppData            → Uygulama verileri
+
+
+DOCKER VOLUME TAŞIMA:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Mevcut volume'ları listele
+docker volume ls
+
+# Volume içeriğini kopyala
+docker run --rm -v source_vol:/source -v dest_vol:/dest \
+  alpine sh -c "cp -av /source/* /dest/"
+
+# Yeni lokasyona volume oluştur
+docker volume create --driver local \
+  --opt type=none \
+  --opt o=bind \
+  --opt device=/DATA/AppData/myapp \
+  myapp_data
+
+=============================================================
+  6. HARİCİ DEPOLAMA YÖNETİMİ
+=============================================================
+
+USB SÜRÜCÜ KULLANIMI:
+━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ USB sürücüler ZimaOS Storage Pool'a dahil edilemez!
+   Yalnızca harici depolama olarak kullanılabilir.
+
+DESTEKLENEN DOSYA SİSTEMLERİ:
+• HFS/HFS+ (Okuma/Yazma)
+• ExFAT (Okuma/Yazma)
+• NTFS (Okuma/Yazma)
+• ext4 (Okuma/Yazma)
+✗ APFS desteklenmez
+
+VERİ TAŞIMA (Settings > Data Migration):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Settings > Data Migration aç
+2. Taşınacak öğeyi seç:
+   - Docker Images
+   - Docker Application Data
+   - User Databases
+3. "Modify Location" tıkla
+4. Hedef depolamayı seç
+5. "Start Migration" tıkla
+6. Dosya bütünlüğü doğrulaması bekle ✓
+
+
+MANUEL KOPYALAMA:
+━━━━━━━━━━━━━━━━━━━━━
+
+# USB sürücüyü bul
+lsblk
+
+# Bağla
+mount /dev/sdc1 /mnt/usb
+
+# Kopyala (bütünlük ile)
+rsync -avzP --checksum /DATA/Media/ /mnt/usb/backup/
+
+# Ayır
+umount /mnt/usb
+
+=============================================================
+  7. YEDEKLEME STRATEJİLERİ
+=============================================================
+
+3-2-1 YEDEKLEME KURALI:
+• 3 kopya veri
+• 2 farklı ortam (NAS + USB)
+• 1 offsite (bulut)
+
+ZFS SNAPSHOT:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Snapshot al
+zfs snapshot data_pool@backup-2025-12-29
+
+# Snapshot listele
+zfs list -t snapshot
+
+# Snapshot'tan geri yükle
+zfs rollback data_pool@backup-2025-12-29
+
+# Snapshot sil
+zfs destroy data_pool@backup-2025-12-29
+
+
+DOCKER YEDEKLEME:
+━━━━━━━━━━━━━━━━━━━━━
+
+# Tüm container'ları durdur ve yedekle
+docker stop $(docker ps -q)
+tar czvf docker-backup-$(date +%Y%m%d).tar.gz /DATA/AppData
+
+# Volume yedekleme
+docker run --rm -v myapp_data:/data -v /backup:/backup \
+  alpine tar czvf /backup/myapp-$(date +%Y%m%d).tar.gz /data
+
+
+BARE-METAL YEDEKLEME (USB'ye):
+━━━━━━━━━━━━━━━━━━━━━
+
+# Sistem diskini USB'ye yedekle
+dd if=/dev/sda bs=4M status=progress | gzip > /mnt/usb/zimaos-backup.img.gz
+
+# Geri yükleme
+gunzip -c /mnt/usb/zimaos-backup.img.gz | dd of=/dev/sda bs=4M
+
+=============================================================
+  UYUMLU DISKLER (Western Digital Red Pro)
+=============================================================
+
+┌──────────────┬──────────┬────────────┐
+│ Model        │ Kapasite │ Durum      │
+├──────────────┼──────────┼────────────┤
+│ WD2002FFSX   │ 2TB      │ ✅ Uyumlu  │
+│ WD4005FFBX   │ 4TB      │ ✅ Uyumlu  │
+│ WD6005FFBX   │ 6TB      │ ✅ Uyumlu  │
+│ WD8005FFBX   │ 8TB      │ ✅ Uyumlu  │
+│ WD102KFBX    │ 10TB     │ ✅ Uyumlu  │
+│ WD121KFBX    │ 12TB     │ ✅ Uyumlu  │
+│ WD161KFGX    │ 16TB     │ ✅ Uyumlu  │
+│ WD181KFGX    │ 18TB     │ ✅ Uyumlu  │
+│ WD201KFGX    │ 20TB     │ ✅ Uyumlu  │
+│ WD221KFGX    │ 22TB     │ ✅ Uyumlu  │
+│ WD240KFGX    │ 24TB     │ ✅ Uyumlu  │
+└──────────────┴──────────┴────────────┘
+
+⚠️ Seagate IronWolf Pro 14T: UYUMSUZ
+⚠️ HGST Ultrastar: Pin3 maskelenmeli
+
+=============================================================
+  HIZLI BAŞLANGIÇ - YENİ KURULUM
+=============================================================
+
+512GB HDD İÇİN ÖNERİLEN YAPILANDIRMA:
+
+1. Web arayüzünden diski başlat
+2. /DATA altında klasörleri oluştur
+3. Docker servislerini kur (docker-compose up -d)
+4. Ollama model indir (CPU modunda)
+5. Open WebUI ile test et
+
+Kullanıcı: Nas344mehmet2026
+Şifre: 1234567890
+
+=============================================================

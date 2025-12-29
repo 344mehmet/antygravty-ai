@@ -1,0 +1,208 @@
+version: '3.8'
+
+# =============================================================
+# ZimaOS 512GB HDD - LLM Ordusu Servisleri
+# AMD RX580 GPU + ROCm 5.7.1 Desteği
+# Kullanıcı: Nas344mehmet2026
+# =============================================================
+
+services:
+
+  # ───────────────────────────────────────────────────────────
+  # PORTAINER - Docker Yönetim Paneli
+  # ───────────────────────────────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # ───────────────────────────────────────────────────────────
+  # ROCm HOST - AMD RX580 GPU Desteği (ROCm 5.7.1)
+  # ───────────────────────────────────────────────────────────
+  rocm-host:
+    image: docker.io/rocm/dev-ubuntu-22.04:5.7.1-complete
+    container_name: rocm-host
+    restart: always
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    volumes:
+      - rocm_libs:/opt/rocm
+    command: [ "sleep", "infinity" ]
+
+  # ───────────────────────────────────────────────────────────
+  # OLLAMA - LLM Sunucusu (GPU Hızlandırmalı)
+  # ───────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    environment:
+      - HIP_PATH=/opt/rocm
+      - LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/hip/lib
+      - HSA_OVERRIDE_GFX_VERSION=8.0.3
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=2
+    volumes:
+      - /DATA/LLM-Ordusu/models/ollama:/root/.ollama
+    volumes_from:
+      - rocm-host:ro
+    depends_on:
+      - rocm-host
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+
+  # ───────────────────────────────────────────────────────────
+  # OPEN WEBUI - ChatGPT Benzeri Arayüz
+  # ───────────────────────────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: always
+    ports:
+      - "3000:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=true
+      - WEBUI_NAME=LLM Ordusu
+    depends_on:
+      - ollama
+
+  # ───────────────────────────────────────────────────────────
+  # n8n - Otomasyon Platformu
+  # ───────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /DATA/Orkestra-Bot:/data/orkestra
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=Nas344mehmet2026
+      - N8N_BASIC_AUTH_PASSWORD=1234567890
+      - WEBHOOK_URL=http://192.168.1.43:5678
+      - GENERIC_TIMEZONE=Europe/Istanbul
+
+  # ───────────────────────────────────────────────────────────
+  # UPTIME KUMA - Servis Monitoring
+  # ───────────────────────────────────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: always
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+
+  # ───────────────────────────────────────────────────────────
+  # POSTGRESQL - Ana Veritabanı
+  # ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    volumes:
+      - /DATA/LLM-Ordusu/databases/postgresql:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=Nas344mehmet2026
+      - POSTGRES_PASSWORD=1234567890
+      - POSTGRES_DB=llm_ordusu
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U Nas344mehmet2026" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ───────────────────────────────────────────────────────────
+  # CHROMADB - Vektör Veritabanı (RAG için)
+  # ───────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - /DATA/LLM-Ordusu/databases/vector-db:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=False
+      - CHROMA_SERVER_AUTH_PROVIDER=token
+      - CHROMA_SERVER_AUTH_CREDENTIALS=1234567890
+
+  # ───────────────────────────────────────────────────────────
+  # FLOWISE - Low-Code AI Builder
+  # ───────────────────────────────────────────────────────────
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: always
+    ports:
+      - "3002:3000"
+    volumes:
+      - flowise_data:/root/.flowise
+    environment:
+      - FLOWISE_USERNAME=Nas344mehmet2026
+      - FLOWISE_PASSWORD=1234567890
+
+  # ───────────────────────────────────────────────────────────
+  # WATCHTOWER - Otomatik Container Güncelleme
+  # ───────────────────────────────────────────────────────────
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - TZ=Europe/Istanbul
+
+# ───────────────────────────────────────────────────────────
+# VOLUMES
+# ───────────────────────────────────────────────────────────
+volumes:
+  portainer_data:
+  rocm_libs:
+  open_webui_data:
+  n8n_data:
+  uptime_kuma_data:
+  flowise_data:
+
+    # ───────────────────────────────────────────────────────────
+    # NETWORKS
+    # ───────────────────────────────────────────────────────────
+networks:
+  default:
+    name: llm_ordusu_network
+    driver: bridge

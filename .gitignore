@@ -1,0 +1,18 @@
+# Ignore sensitive files
+.env
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+node_modules/
+.chromadb/
+*.bak
+
+# IDE
+.vscode/
+.idea/
+
+# Temp files
+*.tmp
+~$*
