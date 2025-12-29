@@ -419,7 +419,57 @@ input bool     InpUseMonteCarlo    = false;        // Monte Carlo Kullan
 input int      InpMC_Simulations   = 100;          // Simülasyon Sayısı
 input double   InpMC_Confidence    = 95.0;         // Güven Aralığı (%)
 
-CPositionInfo  posInfo;
+input group "=== SCHAFF TREND CYCLE ==="
+input bool     InpUseSTC           = true;         // STC Kullan
+input int      InpSTC_Period       = 10;           // STC Periyodu
+input int      InpSTC_Fast         = 23;           // Fast Cycle
+input int      InpSTC_Slow         = 50;           // Slow Cycle
+
+input group "=== WOODIES CCI ==="
+input bool     InpUseWoodies       = true;         // Woodies CCI Kullan
+input int      InpWoodies_CCI      = 14;           // CCI Periyodu
+input int      InpWoodies_TCCI     = 6;            // Turbo CCI
+
+input group "=== CONNORS RSI ==="
+input bool     InpUseConnors       = true;         // Connors RSI Kullan
+input int      InpConnors_RSI      = 3;            // RSI Periyodu
+input int      InpConnors_Streak   = 2;            // Streak Periyodu
+input int      InpConnors_Rank     = 100;          // Rank Periyodu
+
+input group "=== RVI (Relative Vigor) ==="
+input bool     InpUseRVI           = true;         // RVI Kullan
+input int      InpRVI_Period       = 10;           // RVI Periyodu
+
+input group "=== SMI (Stochastic Momentum) ==="
+input bool     InpUseSMI           = true;         // SMI Kullan
+input int      InpSMI_K            = 13;           // %K Periyodu
+input int      InpSMI_D            = 25;           // %D Periyodu
+input int      InpSMI_Signal       = 2;            // Signal
+
+input group "=== TMF (Trend Momentum Force) ==="
+input bool     InpUseTMF           = true;         // TMF Kullan
+input int      InpTMF_Period       = 21;           // TMF Periyodu
+
+input group "=== McGINLEY DYNAMIC ==="
+input bool     InpUseMcGinley      = true;         // McGinley Kullan
+input int      InpMcG_Period       = 14;           // Periyot
+input double   InpMcG_Constant     = 0.6;          // McGinley Constant
+
+input group "=== ALMA (Arnaud Legoux) ==="
+input bool     InpUseALMA          = true;         // ALMA Kullan
+input int      InpALMA_Period      = 9;            // ALMA Periyodu
+input double   InpALMA_Offset      = 0.85;         // Offset
+input double   InpALMA_Sigma       = 6.0;          // Sigma
+
+input group "=== KAUFMAN EFFICIENCY ==="
+input bool     InpUseKaufman       = true;         // Kaufman Kullan
+input int      InpKauf_Period      = 10;           // Periyot
+input double   InpKauf_Threshold   = 0.5;          // Efficiency Threshold
+
+input group "=== EHLERS FISHER TRANSFORM ==="
+input bool     InpUseEhlers        = true;         // Ehlers Kullan
+input int      InpEhlers_Period    = 10;           // Periyot
+
 COrderInfo     orderInfo;
 
 // MA Handles
@@ -536,6 +586,21 @@ double ultimateOsc = 0;
 double adValue[], adMA[];
 double rfScore = 0;
 double mcVaR = 0, mcExpectedReturn = 0;
+
+// NEW v8 HANDLES
+int handleRVI;
+
+// NEW v8 VALUES
+double stcValue = 0;
+double woodiesCCI = 0, woodiesTCCI = 0;
+double connorsRSI = 0;
+double rviValue[], rviSignal[];
+double smiValue = 0;
+double tmfValue = 0;
+double mcGinleyValue = 0, mcGinleyPrev = 0;
+double almaValue = 0;
+double kaufmanER = 0;
+double fisherValue = 0, fisherPrev = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -4523,6 +4588,370 @@ bool ApplyV7Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckMonteCarloFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v8 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Schaff Trend Cycle Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckSTCFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSTC)
+        return true;
+    
+    // Simplified STC calculation
+    double macdVal = 0;
+    for(int i = 0; i < InpSTC_Fast; i++)
+        macdVal += iClose(_Symbol, PERIOD_CURRENT, i);
+    macdVal /= InpSTC_Fast;
+    
+    double slowMA = 0;
+    for(int i = 0; i < InpSTC_Slow; i++)
+        slowMA += iClose(_Symbol, PERIOD_CURRENT, i);
+    slowMA /= InpSTC_Slow;
+    
+    double diff = macdVal - slowMA;
+    stcValue = 50 + (diff / atr[0]) * 10; // Normalized
+    stcValue = MathMax(0, MathMin(100, stcValue));
+    
+    if(signal == SIGNAL_BUY && stcValue < 25)
+        return false;
+    if(signal == SIGNAL_SELL && stcValue > 75)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Woodies CCI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckWoodiesFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWoodies)
+        return true;
+    
+    // Calculate CCI
+    double typicalPrice = (iHigh(_Symbol, PERIOD_CURRENT, 0) + 
+                          iLow(_Symbol, PERIOD_CURRENT, 0) + 
+                          iClose(_Symbol, PERIOD_CURRENT, 0)) / 3.0;
+    
+    double sma = 0, meanDev = 0;
+    for(int i = 0; i < InpWoodies_CCI; i++)
+    {
+        double tp = (iHigh(_Symbol, PERIOD_CURRENT, i) + 
+                    iLow(_Symbol, PERIOD_CURRENT, i) + 
+                    iClose(_Symbol, PERIOD_CURRENT, i)) / 3.0;
+        sma += tp;
+    }
+    sma /= InpWoodies_CCI;
+    
+    for(int i = 0; i < InpWoodies_CCI; i++)
+    {
+        double tp = (iHigh(_Symbol, PERIOD_CURRENT, i) + 
+                    iLow(_Symbol, PERIOD_CURRENT, i) + 
+                    iClose(_Symbol, PERIOD_CURRENT, i)) / 3.0;
+        meanDev += MathAbs(tp - sma);
+    }
+    meanDev /= InpWoodies_CCI;
+    
+    woodiesCCI = meanDev != 0 ? (typicalPrice - sma) / (0.015 * meanDev) : 0;
+    
+    if(signal == SIGNAL_BUY && woodiesCCI < 0)
+        return false;
+    if(signal == SIGNAL_SELL && woodiesCCI > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Connors RSI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckConnorsFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseConnors)
+        return true;
+    
+    // Calculate short-term RSI
+    double gains = 0, losses = 0;
+    for(int i = 0; i < InpConnors_RSI; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        if(change > 0) gains += change;
+        else losses -= change;
+    }
+    
+    double rsi1 = losses == 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    
+    // Streak counting
+    int streak = 0;
+    for(int i = 0; i < 10; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        if(change > 0) streak++;
+        else break;
+    }
+    
+    connorsRSI = (rsi1 + streak * 5 + 50) / 3; // Simplified composite
+    
+    if(signal == SIGNAL_BUY && connorsRSI < 25)
+        return false;
+    if(signal == SIGNAL_SELL && connorsRSI > 75)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| RVI (Relative Vigor Index) Filter                                |
+//+------------------------------------------------------------------+
+bool CheckRVIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRVI)
+        return true;
+    
+    if(CopyBuffer(handleRVI, 0, 0, 3, rviValue) < 3) return true;
+    if(CopyBuffer(handleRVI, 1, 0, 3, rviSignal) < 3) return true;
+    
+    if(signal == SIGNAL_BUY && rviValue[0] < rviSignal[0])
+        return false;
+    if(signal == SIGNAL_SELL && rviValue[0] > rviSignal[0])
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| SMI (Stochastic Momentum Index) Filter                           |
+//+------------------------------------------------------------------+
+bool CheckSMIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSMI)
+        return true;
+    
+    // Calculate SMI
+    double highest = 0, lowest = 999999;
+    for(int i = 0; i < InpSMI_K; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highest) highest = high;
+        if(low < lowest) lowest = low;
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double midpoint = (highest + lowest) / 2.0;
+    double range = highest - lowest;
+    
+    smiValue = range != 0 ? ((close - midpoint) / (range / 2.0)) * 100 : 0;
+    
+    if(signal == SIGNAL_BUY && smiValue < -40)
+        return false;
+    if(signal == SIGNAL_SELL && smiValue > 40)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| TMF (Trend Momentum Force) Filter                                |
+//+------------------------------------------------------------------+
+bool CheckTMFFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTMF)
+        return true;
+    
+    // Calculate composite TMF
+    double sumTrend = 0, sumMomentum = 0;
+    
+    for(int i = 0; i < InpTMF_Period; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double closePrev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        sumTrend += close - closePrev;
+        sumMomentum += MathAbs(close - closePrev);
+    }
+    
+    tmfValue = sumMomentum != 0 ? (sumTrend / sumMomentum) * 100 : 0;
+    
+    if(signal == SIGNAL_BUY && tmfValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && tmfValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| McGinley Dynamic Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckMcGinleyFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMcGinley)
+        return true;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    // McGinley Dynamic formula
+    if(mcGinleyValue == 0)
+        mcGinleyValue = close;
+    
+    mcGinleyPrev = mcGinleyValue;
+    double ratio = close / mcGinleyValue;
+    mcGinleyValue = mcGinleyValue + (close - mcGinleyValue) / 
+                    (InpMcG_Period * MathPow(ratio, 4));
+    
+    if(signal == SIGNAL_BUY && close < mcGinleyValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > mcGinleyValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ALMA (Arnaud Legoux Moving Average) Filter                       |
+//+------------------------------------------------------------------+
+bool CheckALMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseALMA)
+        return true;
+    
+    // Calculate ALMA
+    double sum = 0, wSum = 0;
+    int m = (int)(InpALMA_Offset * (InpALMA_Period - 1));
+    double s = InpALMA_Period / InpALMA_Sigma;
+    
+    for(int i = 0; i < InpALMA_Period; i++)
+    {
+        double w = MathExp(-1.0 * (i - m) * (i - m) / (2 * s * s));
+        sum += iClose(_Symbol, PERIOD_CURRENT, InpALMA_Period - 1 - i) * w;
+        wSum += w;
+    }
+    
+    almaValue = wSum != 0 ? sum / wSum : iClose(_Symbol, PERIOD_CURRENT, 0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < almaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > almaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Kaufman Efficiency Ratio Filter                                  |
+//+------------------------------------------------------------------+
+bool CheckKaufmanFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKaufman)
+        return true;
+    
+    // Calculate Kaufman Efficiency Ratio
+    double change = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - 
+                           iClose(_Symbol, PERIOD_CURRENT, InpKauf_Period));
+    
+    double volatility = 0;
+    for(int i = 0; i < InpKauf_Period; i++)
+        volatility += MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - 
+                             iClose(_Symbol, PERIOD_CURRENT, i + 1));
+    
+    kaufmanER = volatility != 0 ? change / volatility : 0;
+    
+    // Only trade when market is efficient (trending)
+    if(kaufmanER < InpKauf_Threshold)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Ehlers Fisher Transform Filter                                   |
+//+------------------------------------------------------------------+
+bool CheckEhlersFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEhlers)
+        return true;
+    
+    // Calculate Fisher Transform
+    double highest = 0, lowest = 999999;
+    for(int i = 0; i < InpEhlers_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highest) highest = high;
+        if(low < lowest) lowest = low;
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double range = highest - lowest;
+    double value = range != 0 ? 2.0 * ((close - lowest) / range - 0.5) : 0;
+    value = MathMax(-0.999, MathMin(0.999, value));
+    
+    fisherPrev = fisherValue;
+    fisherValue = 0.5 * MathLog((1 + value) / (1 - value)) + 0.5 * fisherPrev;
+    
+    if(signal == SIGNAL_BUY && fisherValue < fisherPrev)
+        return false;
+    if(signal == SIGNAL_SELL && fisherValue > fisherPrev)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v8 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV8Indicators()
+{
+    if(InpUseRVI)
+        handleRVI = iRVI(_Symbol, PERIOD_CURRENT, InpRVI_Period);
+    
+    ArraySetAsSeries(rviValue, true);
+    ArraySetAsSeries(rviSignal, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v8 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV8Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckSTCFilter(signal))
+        return false;
+    
+    if(!CheckWoodiesFilter(signal))
+        return false;
+    
+    if(!CheckConnorsFilter(signal))
+        return false;
+    
+    if(!CheckRVIFilter(signal))
+        return false;
+    
+    if(!CheckSMIFilter(signal))
+        return false;
+    
+    if(!CheckTMFFilter(signal))
+        return false;
+    
+    if(!CheckMcGinleyFilter(signal))
+        return false;
+    
+    if(!CheckALMAFilter(signal))
+        return false;
+    
+    if(!CheckKaufmanFilter(signal))
+        return false;
+    
+    if(!CheckEhlersFilter(signal))
         return false;
     
     return true;
