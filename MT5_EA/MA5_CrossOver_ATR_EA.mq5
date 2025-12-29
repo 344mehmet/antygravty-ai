@@ -1182,6 +1182,46 @@ input group "=== INFINITY AI ==="
 input bool     InpUseInfinityAI    = false;        // Infinity AI Kullan
 input double   InpIA_Confidence    = 0.999;        // Final gatekeeper threshold
 
+input group "=== BIG BANG ==="
+input bool     InpUseBigBang       = true;         // Big Bang Kullan
+input double   InpBB_ExpansionRate = 2.0;          // Initial expansion limit
+
+input group "=== PRIMORDIAL FLOW ==="
+input bool     InpUsePrimordial    = true;         // Primordial Flow Kullan
+input int      InpPF_Depth         = 500;          // Deep history lookback
+
+input group "=== COSMIC ORDER ==="
+input bool     InpUseCosmicOrder   = true;         // Cosmic Order Kullan
+input int      InpCO_Sequence      = 7;            // Harmonic sequence
+
+input group "=== LIGHT SPEED ==="
+input bool     InpUseLightSpeed    = true;         // Light Speed Kullan
+input double   InpLS_MaxVelocity   = 3.0;          // Speed limit (ATR units)
+
+input group "=== DARK MATTER PRO ==="
+input bool     InpUseDarkMatterPro = true;         // Dark Matter Pro Kullan
+input double   InpDMP_Resistance   = 0.8;          // Absorption threshold
+
+input group "=== NEBULA DUST ==="
+input bool     InpUseNebulaDust    = true;         // Nebula Dust Kullan
+input double   InpND_FilterSize    = 0.05;         // Noise reduction filter
+
+input group "=== GALACTIC CORE ==="
+input bool     InpUseGalacticCore  = true;         // Galactic Core Kullan
+input int      InpGC_MassFactor    = 1000;         // Supermassive lookback
+
+input group "=== STAR FORGE ==="
+input bool     InpUseStarForge     = true;         // Star Forge Kullan
+input int      InpSF_Patterns      = 3;            // Fractal patterns to match
+
+input group "=== VOID FILTER ==="
+input bool     InpUseVoid          = true;         // Void Filter Kullan
+input double   InpVF_EmptyThreshold= 0.1;          // Minimum activity required
+
+input group "=== GENESIS AI ==="
+input bool     InpUseGenesisAI     = false;        // Genesis AI Kullan
+input double   InpGAI_Threshold    = 0.95;         // Creation logic threshold
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1495,6 +1535,18 @@ double ehpMarketCurvature = 0;
 double ncVolumeDensity = 0;
 double crNoiseScore = 0;
 double iaInfinityAI_Result = 0;
+
+// NEW v25 VALUES - GENESIS 10
+double bbExpansionVal = 0;
+double pfFlowVector = 0;
+double coOrderBalance = 0;
+double lsVelocityCap = 0;
+double dmpResistanceScore = 0;
+double ndDustFilter = 0;
+double gcCoreMass = 0;
+double sfForgePatterns = 0;
+double vfVoidActivity = 0;
+double gaiGenesisAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -2947,7 +2999,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v24 Module Aggregates
+    // Apply v1-v25 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -2986,6 +3038,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV23Filters(signal)) return false;
     // v24
     if(!ApplyV24Filters(signal)) return false;
+    // v25
+    if(!ApplyV25Filters(signal)) return false;
     
     return true;
 }
@@ -11693,6 +11747,243 @@ bool ApplyV24Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckNebulaCoreFilter(signal)) return false;
     if(!CheckCosmicRadFilter(signal)) return false;
     if(!CheckInfinityAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      GENESIS v25 MODÜL FONKSIYONLARI (10 MODUL) - 248 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Big Bang Filter                                                  |
+//+------------------------------------------------------------------+
+bool CheckBigBangFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBigBang)
+        return true;
+    
+    // Initial expansion check: Volatility spike at start of session/move
+    double range = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    double prevRange = iHigh(_Symbol, PERIOD_CURRENT, 1) - iLow(_Symbol, PERIOD_CURRENT, 1);
+    
+    bbExpansionVal = (prevRange > 0) ? range / prevRange : 1;
+    
+    if(bbExpansionVal > InpBB_ExpansionRate) // Too much initial expansion (Big Bang)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Primordial Flow Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckPrimordialFlowFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePrimordial)
+        return true;
+    
+    // Deep history trend confirmation
+    double sum = 0;
+    for(int i = 0; i < InpPF_Depth; i++) sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double deepAvg = sum / InpPF_Depth;
+    
+    pfFlowVector = iClose(_Symbol, PERIOD_CURRENT, 0) - deepAvg;
+    
+    if(signal == SIGNAL_BUY && pfFlowVector < 0) return false;
+    if(signal == SIGNAL_SELL && pfFlowVector > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Cosmic Order Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckCosmicOrderFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCosmicOrder)
+        return true;
+    
+    // Harmonic sequence matching
+    int up = 0, down = 0;
+    for(int i = 0; i < InpCO_Sequence; i++)
+    {
+        if(iClose(_Symbol, PERIOD_CURRENT, i) > iClose(_Symbol, PERIOD_CURRENT, i+1)) up++;
+        else down++;
+    }
+    
+    coOrderBalance = (double)(up - down) / InpCO_Sequence;
+    
+    if(MathAbs(coOrderBalance) < 0.3) // Chaotic/No clear order
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Light Speed Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckLightSpeedFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLightSpeed)
+        return true;
+    
+    // Velocity limit check
+    double velocity = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    lsVelocityCap = velocity / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(lsVelocityCap > InpLS_MaxVelocity) // Breaking the speed limit (Blow-off)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Dark Matter Pro Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckDarkMatterProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDarkMatterPro)
+        return true;
+    
+    // Advanced resistance absorption
+    double high = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double low = iLow(_Symbol, PERIOD_CURRENT, 0);
+    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    long vol = iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    dmpResistanceScore = (double)vol / ((high - low) / point + 1);
+    
+    double avgRes = 0;
+    for(int i = 1; i < 20; i++) 
+        avgRes += (double)iVolume(_Symbol, PERIOD_CURRENT, i) / ((iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i)) / point + 1);
+    avgRes /= 19;
+    
+    if(dmpResistanceScore > avgRes * (1.0 / InpDMP_Resistance)) // Dense dark matter (Heavy resistance)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Nebula Dust Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckNebulaDustFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNebulaDust)
+        return true;
+    
+    // Noise reduction via price smoothing
+    double smooth = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0) + iClose(_Symbol, PERIOD_CURRENT, 0)) / 3.0;
+    ndDustFilter = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - smooth) / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(ndDustFilter > InpND_FilterSize) // Too much dust (Market noise)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Galactic Core Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckGalacticCoreFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGalacticCore)
+        return true;
+    
+    // Supermassive trend pull
+    double sum = 0;
+    for(int i = 0; i < InpGC_MassFactor; i++) sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double corePrice = sum / InpGC_MassFactor;
+    
+    gcCoreMass = (iClose(_Symbol, PERIOD_CURRENT, 0) - corePrice);
+    
+    if(signal == SIGNAL_BUY && gcCoreMass < 0) return false;
+    if(signal == SIGNAL_SELL && gcCoreMass > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Star Forge Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckStarForgeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStarForge)
+        return true;
+    
+    // Matching fractal structural patterns
+    int matches = 0;
+    for(int i = 1; i < 20; i++)
+    {
+        bool p1 = iClose(_Symbol, PERIOD_CURRENT, 0) > iClose(_Symbol, PERIOD_CURRENT, 1);
+        bool p2 = iClose(_Symbol, PERIOD_CURRENT, i) > iClose(_Symbol, PERIOD_CURRENT, i+1);
+        if(p1 == p2) matches++;
+    }
+    
+    sfForgePatterns = matches;
+    
+    if(matches < InpSF_Patterns * 4) // Unstructured forge
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Void Filter                                                      |
+//+------------------------------------------------------------------+
+bool CheckVoidFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVoid)
+        return true;
+    
+    // Minimum activity required to enter
+    double vol = (double)iVolume(_Symbol, PERIOD_CURRENT, 0);
+    double avgVol = 0;
+    for(int i = 1; i < 20; i++) avgVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    avgVol /= 19;
+    
+    vfVoidActivity = vol / (avgVol > 0 ? avgVol : 1);
+    
+    if(vfVoidActivity < InpVF_EmptyThreshold) // Trading in a void
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Genesis AI Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckGenesisAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGenesisAI)
+        return true;
+    
+    // Evolution simulation logic
+    double fitness = (coOrderBalance > 0 ? 1 : -1) * (1.0 - ndDustFilter) * vfVoidActivity;
+    gaiGenesisAI_Result = MathTanh(fitness);
+    
+    if(MathAbs(gaiGenesisAI_Result) < InpGAI_Threshold - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v25 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV25Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckBigBangFilter(signal)) return false;
+    if(!CheckPrimordialFlowFilter(signal)) return false;
+    if(!CheckCosmicOrderFilter(signal)) return false;
+    if(!CheckLightSpeedFilter(signal)) return false;
+    if(!CheckDarkMatterProFilter(signal)) return false;
+    if(!CheckNebulaDustFilter(signal)) return false;
+    if(!CheckGalacticCoreFilter(signal)) return false;
+    if(!CheckStarForgeFilter(signal)) return false;
+    if(!CheckVoidFilter(signal)) return false;
+    if(!CheckGenesisAIFilter(signal)) return false;
     
     return true;
 }
