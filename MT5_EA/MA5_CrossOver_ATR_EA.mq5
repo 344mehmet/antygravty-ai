@@ -162,6 +162,61 @@ input int      InpGrid_Levels      = 3;            // Grid Seviyeleri
 input int      InpGrid_Distance    = 20;           // Grid Mesafesi (pips)
 input double   InpGrid_LotMult     = 1.5;          // Grid Lot Çarpanı
 
+input group "=== ADX TREND STRENGTH ==="
+input bool     InpUseADX           = true;         // ADX Kullan
+input int      InpADX_Period       = 14;           // ADX Periyodu
+input int      InpADX_MinLevel     = 25;           // Min ADX Seviyesi
+input bool     InpADX_DIFilter     = true;         // DI+/DI- Filtresi
+
+input group "=== ICHIMOKU CLOUD ==="
+input bool     InpUseIchimoku      = false;        // Ichimoku Kullan
+input int      InpIchi_Tenkan      = 9;            // Tenkan-sen
+input int      InpIchi_Kijun       = 26;           // Kijun-sen
+input int      InpIchi_Senkou      = 52;           // Senkou Span B
+
+input group "=== PARABOLIC SAR ==="
+input bool     InpUseSAR           = true;         // Parabolic SAR Kullan
+input double   InpSAR_Step         = 0.02;         // SAR Step
+input double   InpSAR_Max          = 0.2;          // SAR Maximum
+
+input group "=== CCI ==="
+input bool     InpUseCCI           = true;         // CCI Kullan
+input int      InpCCI_Period       = 20;           // CCI Periyodu
+input int      InpCCI_Overbought   = 100;          // CCI Aşırı Alım
+input int      InpCCI_Oversold     = -100;         // CCI Aşırı Satım
+
+input group "=== WILLIAMS %R ==="
+input bool     InpUseWilliams      = true;         // Williams %R Kullan
+input int      InpWilliams_Period  = 14;           // Williams Periyodu
+input int      InpWilliams_OB      = -20;          // Aşırı Alım
+input int      InpWilliams_OS      = -80;          // Aşırı Satım
+
+input group "=== MFI (Money Flow Index) ==="
+input bool     InpUseMFI           = true;         // MFI Kullan
+input int      InpMFI_Period       = 14;           // MFI Periyodu
+input int      InpMFI_Overbought   = 80;           // MFI Aşırı Alım
+input int      InpMFI_Oversold     = 20;           // MFI Aşırı Satım
+
+input group "=== PIVOT POINTS ==="
+input bool     InpUsePivot         = true;         // Pivot Points Kullan
+input bool     InpPivot_Daily      = true;         // Günlük Pivot
+input bool     InpPivot_Weekly     = false;        // Haftalık Pivot
+
+input group "=== VOLATILITY BREAKOUT ==="
+input bool     InpUseVolBreak      = true;         // Volatility Breakout Kullan
+input double   InpVolBreak_Mult    = 1.5;          // ATR Çarpanı
+input int      InpVolBreak_Period  = 5;            // Bakış Periyodu
+
+input group "=== TRAILING TP ==="
+input bool     InpUseTrailingTP    = true;         // Trailing TP Kullan
+input double   InpTrailTP_ATRMult  = 0.5;          // TP Trailing ATR Çarpanı
+input double   InpTrailTP_Step     = 0.3;          // TP Step (ATR)
+
+input group "=== ACCOUNT PROTECTION ==="
+input bool     InpUseAccProt       = true;         // Hesap Koruması Kullan
+input double   InpMinBalance       = 50.0;         // Min Bakiye ($)
+input double   InpMaxSpread        = 5.0;          // Max Spread (pips)
+input bool     InpCheckMargin      = true;         // Marjin Kontrolü
 
 //+------------------------------------------------------------------+
 //| GLOBAL VARIABLES                                                  |
@@ -184,6 +239,14 @@ int handleBB;
 int handleMACD;
 int handleStoch;
 
+// NEW v3 HANDLES
+int handleADX;
+int handleIchimoku;
+int handleSAR;
+int handleCCI;
+int handleWilliams;
+int handleMFI;
+
 // MA Values
 double ma1[], ma2[], ma3[], ma4[], ma5[];
 double atr[];
@@ -201,6 +264,15 @@ double fiboHigh = 0, fiboLow = 0;
 double supportLevel = 0, resistanceLevel = 0;
 double equityHistory[];
 int gridLevel = 0;
+
+// NEW v3 VALUES
+double adxValue[], diPlus[], diMinus[];
+double ichiTenkan[], ichiKijun[], ichiSpanA[], ichiSpanB[];
+double sarValue[];
+double cciValue[];
+double williamsValue[];
+double mfiValue[];
+double pivotP = 0, pivotR1 = 0, pivotR2 = 0, pivotS1 = 0, pivotS2 = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -2119,6 +2191,431 @@ bool ApplyNew10Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckEquityCurveFilter())
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v3 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ADX Trend Strength Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckADXFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseADX)
+        return true;
+    
+    if(CopyBuffer(handleADX, 0, 0, 3, adxValue) < 3) return true;
+    if(CopyBuffer(handleADX, 1, 0, 3, diPlus) < 3) return true;
+    if(CopyBuffer(handleADX, 2, 0, 3, diMinus) < 3) return true;
+    
+    // ADX must be above minimum level (trending market)
+    if(adxValue[0] < InpADX_MinLevel)
+        return false;
+    
+    // DI filter
+    if(InpADX_DIFilter)
+    {
+        if(signal == SIGNAL_BUY && diPlus[0] < diMinus[0])
+            return false;
+        if(signal == SIGNAL_SELL && diMinus[0] < diPlus[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Ichimoku Cloud Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckIchimokuFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseIchimoku)
+        return true;
+    
+    if(CopyBuffer(handleIchimoku, 0, 0, 3, ichiTenkan) < 3) return true;
+    if(CopyBuffer(handleIchimoku, 1, 0, 3, ichiKijun) < 3) return true;
+    if(CopyBuffer(handleIchimoku, 2, 0, 3, ichiSpanA) < 3) return true;
+    if(CopyBuffer(handleIchimoku, 3, 0, 3, ichiSpanB) < 3) return true;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double cloudTop = MathMax(ichiSpanA[0], ichiSpanB[0]);
+    double cloudBottom = MathMin(ichiSpanA[0], ichiSpanB[0]);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Price should be above cloud
+        if(close < cloudTop)
+            return false;
+        // Tenkan above Kijun
+        if(ichiTenkan[0] < ichiKijun[0])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Price should be below cloud
+        if(close > cloudBottom)
+            return false;
+        // Tenkan below Kijun
+        if(ichiTenkan[0] > ichiKijun[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Parabolic SAR Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckSARFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSAR)
+        return true;
+    
+    if(CopyBuffer(handleSAR, 0, 0, 3, sarValue) < 3) return true;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // SAR should be below price (uptrend)
+        if(sarValue[0] > close)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // SAR should be above price (downtrend)
+        if(sarValue[0] < close)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| CCI Filter                                                       |
+//+------------------------------------------------------------------+
+bool CheckCCIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCCI)
+        return true;
+    
+    if(CopyBuffer(handleCCI, 0, 0, 3, cciValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Don't buy if overbought
+        if(cciValue[0] > InpCCI_Overbought)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Don't sell if oversold
+        if(cciValue[0] < InpCCI_Oversold)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Williams %R Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckWilliamsFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWilliams)
+        return true;
+    
+    if(CopyBuffer(handleWilliams, 0, 0, 3, williamsValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Don't buy if overbought
+        if(williamsValue[0] > InpWilliams_OB)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Don't sell if oversold
+        if(williamsValue[0] < InpWilliams_OS)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| MFI (Money Flow Index) Filter                                    |
+//+------------------------------------------------------------------+
+bool CheckMFIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMFI)
+        return true;
+    
+    if(CopyBuffer(handleMFI, 0, 0, 3, mfiValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(mfiValue[0] > InpMFI_Overbought)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(mfiValue[0] < InpMFI_Oversold)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Pivot Points                                           |
+//+------------------------------------------------------------------+
+void CalculatePivotPoints()
+{
+    if(!InpUsePivot)
+        return;
+    
+    ENUM_TIMEFRAMES tf = InpPivot_Daily ? PERIOD_D1 : PERIOD_W1;
+    
+    double high = iHigh(_Symbol, tf, 1);
+    double low = iLow(_Symbol, tf, 1);
+    double close = iClose(_Symbol, tf, 1);
+    
+    pivotP = (high + low + close) / 3.0;
+    pivotR1 = 2 * pivotP - low;
+    pivotR2 = pivotP + (high - low);
+    pivotS1 = 2 * pivotP - high;
+    pivotS2 = pivotP - (high - low);
+}
+
+bool CheckPivotFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePivot)
+        return true;
+    
+    CalculatePivotPoints();
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Don't buy too close to resistance
+        if(MathAbs(close - pivotR1) < atr[0] * 0.5 || MathAbs(close - pivotR2) < atr[0] * 0.5)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Don't sell too close to support
+        if(MathAbs(close - pivotS1) < atr[0] * 0.5 || MathAbs(close - pivotS2) < atr[0] * 0.5)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Volatility Breakout Filter                                       |
+//+------------------------------------------------------------------+
+bool CheckVolatilityBreakout(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVolBreak)
+        return true;
+    
+    double highestHigh = 0, lowestLow = 999999;
+    
+    for(int i = 1; i <= InpVolBreak_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highestHigh) highestHigh = high;
+        if(low < lowestLow) lowestLow = low;
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double breakoutThreshold = atr[0] * InpVolBreak_Mult;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Price breaks above range
+        if(close < highestHigh - breakoutThreshold)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Price breaks below range
+        if(close > lowestLow + breakoutThreshold)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Trailing Take Profit                                             |
+//+------------------------------------------------------------------+
+void CheckTrailingTP()
+{
+    if(!InpUseTrailingTP)
+        return;
+    
+    double atrValue = atr[0];
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!posInfo.SelectByIndex(i))
+            continue;
+        
+        if(posInfo.Symbol() != _Symbol || posInfo.Magic() != InpMagicNumber)
+            continue;
+        
+        double currentTP = posInfo.TakeProfit();
+        double openPrice = posInfo.PriceOpen();
+        int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+        
+        if(posInfo.PositionType() == POSITION_TYPE_BUY)
+        {
+            double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double newTP = currentPrice + atrValue * InpTrailTP_ATRMult;
+            
+            // Only move TP if in profit and new TP is higher
+            if(currentPrice > openPrice + atrValue * InpTrailTP_Step)
+            {
+                if(currentTP == 0 || newTP > currentTP)
+                {
+                    newTP = NormalizeDouble(newTP, digits);
+                    trade.PositionModify(posInfo.Ticket(), posInfo.StopLoss(), newTP);
+                }
+            }
+        }
+        else
+        {
+            double currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            double newTP = currentPrice - atrValue * InpTrailTP_ATRMult;
+            
+            if(currentPrice < openPrice - atrValue * InpTrailTP_Step)
+            {
+                if(currentTP == 0 || newTP < currentTP)
+                {
+                    newTP = NormalizeDouble(newTP, digits);
+                    trade.PositionModify(posInfo.Ticket(), posInfo.StopLoss(), newTP);
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Account Protection                                               |
+//+------------------------------------------------------------------+
+bool CheckAccountProtection()
+{
+    if(!InpUseAccProt)
+        return true;
+    
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    
+    // Min balance check
+    if(balance < InpMinBalance)
+    {
+        Print("⛔ Min bakiye altında: $", balance);
+        return false;
+    }
+    
+    // Spread check
+    double spread = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) * SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10;
+    if(spread > InpMaxSpread)
+    {
+        Print("⚠️ Spread çok yüksek: ", spread, " pips");
+        return false;
+    }
+    
+    // Margin check
+    if(InpCheckMargin)
+    {
+        double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+        double marginLevel = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
+        
+        if(marginLevel > 0 && marginLevel < 200)
+        {
+            Print("⚠️ Margin seviyesi düşük: ", marginLevel, "%");
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v3 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV3Indicators()
+{
+    if(InpUseADX)
+        handleADX = iADX(_Symbol, PERIOD_CURRENT, InpADX_Period);
+    
+    if(InpUseIchimoku)
+        handleIchimoku = iIchimoku(_Symbol, PERIOD_CURRENT, InpIchi_Tenkan, InpIchi_Kijun, InpIchi_Senkou);
+    
+    if(InpUseSAR)
+        handleSAR = iSAR(_Symbol, PERIOD_CURRENT, InpSAR_Step, InpSAR_Max);
+    
+    if(InpUseCCI)
+        handleCCI = iCCI(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
+    
+    if(InpUseWilliams)
+        handleWilliams = iWPR(_Symbol, PERIOD_CURRENT, InpWilliams_Period);
+    
+    if(InpUseMFI)
+        handleMFI = iMFI(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
+    
+    // Set arrays as series
+    ArraySetAsSeries(adxValue, true);
+    ArraySetAsSeries(diPlus, true);
+    ArraySetAsSeries(diMinus, true);
+    ArraySetAsSeries(ichiTenkan, true);
+    ArraySetAsSeries(ichiKijun, true);
+    ArraySetAsSeries(ichiSpanA, true);
+    ArraySetAsSeries(ichiSpanB, true);
+    ArraySetAsSeries(sarValue, true);
+    ArraySetAsSeries(cciValue, true);
+    ArraySetAsSeries(williamsValue, true);
+    ArraySetAsSeries(mfiValue, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v3 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV3Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckADXFilter(signal))
+        return false;
+    
+    if(!CheckIchimokuFilter(signal))
+        return false;
+    
+    if(!CheckSARFilter(signal))
+        return false;
+    
+    if(!CheckCCIFilter(signal))
+        return false;
+    
+    if(!CheckWilliamsFilter(signal))
+        return false;
+    
+    if(!CheckMFIFilter(signal))
+        return false;
+    
+    if(!CheckPivotFilter(signal))
+        return false;
+    
+    if(!CheckVolatilityBreakout(signal))
+        return false;
+    
+    if(!CheckAccountProtection())
         return false;
     
     return true;
