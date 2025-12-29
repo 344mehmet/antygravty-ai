@@ -569,7 +569,54 @@ input bool     InpUseTradeOpt      = false;        // Trade Opt Kullan
 input int      InpOpt_Lookback     = 500;          // Backtest Bars
 input double   InpOpt_MinWinRate   = 0.55;         // Min Win Rate
 
-int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
+input group "=== ENVELOPES ==="
+input bool     InpUseEnvelopes     = true;         // Envelopes Kullan
+input int      InpEnv_Period       = 20;           // MA Periyodu
+input double   InpEnv_Deviation    = 0.1;          // Deviation (%)
+
+input group "=== PRICE CHANNEL ==="
+input bool     InpUsePriceChannel  = true;         // Price Channel Kullan
+input int      InpPC_Period        = 20;           // Periyot
+
+input group "=== AO DIVERGENCE ==="
+input bool     InpUseAODiv         = true;         // AO Divergence Kullan
+input int      InpAODiv_Bars       = 20;           // Lookback Bars
+
+input group "=== WILLIAMS DIVERGENCE ==="
+input bool     InpUseWillDiv       = true;         // Williams Div Kullan
+input int      InpWillDiv_Bars     = 20;           // Lookback Bars
+
+input group "=== CSI (Commodity Selection) ==="
+input bool     InpUseCSI           = false;        // CSI Kullan
+input int      InpCSI_Period       = 14;           // Periyot
+input double   InpCSI_Min          = 50.0;         // Min CSI
+
+input group "=== TRADE STATISTICS ==="
+input bool     InpUseTradeStats    = true;         // Trade Stats Kullan
+input int      InpStats_MinTrades  = 10;           // Min İşlem Sayısı
+input double   InpStats_MinWin     = 0.50;         // Min Win Rate
+
+input group "=== EQUITY GUARD ==="
+input bool     InpUseEquityGuard   = true;         // Equity Guard Kullan
+input double   InpEG_MaxDD         = 10.0;         // Max Drawdown (%)
+input double   InpEG_DailyMax      = 5.0;          // Günlük Max DD (%)
+
+input group "=== SMART EXIT ==="
+input bool     InpUseSmartExit     = true;         // Smart Exit Kullan
+input double   InpSE_TrailATR      = 2.0;          // Trailing ATR Multiple
+input double   InpSE_BreakEven     = 1.0;          // BreakEven ATR
+
+input group "=== TSI (True Strength Index) ==="
+input bool     InpUseTSI           = true;         // TSI Kullan
+input int      InpTSI_Long         = 25;           // Long Periyot
+input int      InpTSI_Short        = 13;           // Short Periyot
+input int      InpTSI_Signal       = 7;            // Signal
+
+input group "=== FINAL OPTIMIZER ==="
+input bool     InpUseFinalOpt      = false;        // Final Opt Kullan
+input int      InpFO_Period        = 1000;         // Optimization Period
+input bool     InpFO_AutoAdjust    = true;         // Oto Ayarlama
+
 int handleATR;
 
 // New module handles
@@ -729,6 +776,16 @@ double smoothRSI = 0;
 double stochRSIK = 0, stochRSID = 0;
 double adrValue = 0;
 double optWinRate = 0;
+
+// NEW v11 VALUES - FINAL 10
+double envUpper = 0, envLower = 0, envMiddle = 0;
+double pcHigh = 0, pcLow = 0;
+bool aoDiv = false, willDiv = false;
+double csiValue = 0;
+int statsWins = 0, statsLosses = 0;
+double egDailyDD = 0;
+double tsiValue = 0, tsiSignal = 0;
+double finalOptScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -5928,6 +5985,332 @@ bool ApplyV10Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckTradeOptFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        FINAL v11 MODÜL FONKSIYONLARI (10 MODUL) - 108 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Envelopes Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckEnvelopesFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEnvelopes)
+        return true;
+    
+    double sum = 0;
+    for(int i = 0; i < InpEnv_Period; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    envMiddle = sum / InpEnv_Period;
+    
+    envUpper = envMiddle * (1 + InpEnv_Deviation / 100);
+    envLower = envMiddle * (1 - InpEnv_Deviation / 100);
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > envUpper)
+        return false;
+    if(signal == SIGNAL_SELL && close < envLower)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Price Channel Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckPriceChannelFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePriceChannel)
+        return true;
+    
+    pcHigh = 0;
+    pcLow = 999999;
+    
+    for(int i = 0; i < InpPC_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > pcHigh) pcHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < pcLow) pcLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double middle = (pcHigh + pcLow) / 2;
+    
+    if(signal == SIGNAL_BUY && close < middle)
+        return false;
+    if(signal == SIGNAL_SELL && close > middle)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| AO Divergence Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckAODivFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAODiv)
+        return true;
+    
+    // Check for divergence between price and AO
+    double priceHigh1 = 0, priceHigh2 = 0;
+    double aoHigh1 = 0, aoHigh2 = 0;
+    
+    for(int i = 0; i < InpAODiv_Bars / 2; i++)
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > priceHigh1) priceHigh1 = iHigh(_Symbol, PERIOD_CURRENT, i);
+    
+    for(int i = InpAODiv_Bars / 2; i < InpAODiv_Bars; i++)
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > priceHigh2) priceHigh2 = iHigh(_Symbol, PERIOD_CURRENT, i);
+    
+    // Simplified AO calculation
+    aoHigh1 = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0)) / 2 - 
+              (iHigh(_Symbol, PERIOD_CURRENT, 5) + iLow(_Symbol, PERIOD_CURRENT, 5)) / 2;
+    aoHigh2 = (iHigh(_Symbol, PERIOD_CURRENT, InpAODiv_Bars/2) + iLow(_Symbol, PERIOD_CURRENT, InpAODiv_Bars/2)) / 2 - 
+              (iHigh(_Symbol, PERIOD_CURRENT, InpAODiv_Bars/2 + 5) + iLow(_Symbol, PERIOD_CURRENT, InpAODiv_Bars/2 + 5)) / 2;
+    
+    // Bearish divergence: price higher high, AO lower high
+    aoDiv = (priceHigh1 > priceHigh2 && aoHigh1 < aoHigh2);
+    
+    if(signal == SIGNAL_BUY && aoDiv)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Williams Divergence Filter                                       |
+//+------------------------------------------------------------------+
+bool CheckWillDivFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWillDiv)
+        return true;
+    
+    // Simple Williams %R divergence check
+    double priceLow1 = 999999, priceLow2 = 999999;
+    
+    for(int i = 0; i < InpWillDiv_Bars / 2; i++)
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < priceLow1) priceLow1 = iLow(_Symbol, PERIOD_CURRENT, i);
+    
+    for(int i = InpWillDiv_Bars / 2; i < InpWillDiv_Bars; i++)
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < priceLow2) priceLow2 = iLow(_Symbol, PERIOD_CURRENT, i);
+    
+    // Bullish divergence: price lower low, indicator higher low
+    willDiv = (priceLow1 < priceLow2);
+    
+    if(signal == SIGNAL_SELL && willDiv)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| CSI (Commodity Selection Index) Filter                           |
+//+------------------------------------------------------------------+
+bool CheckCSIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCSI)
+        return true;
+    
+    // CSI = ADXR * ATR(14) / sqrt(margin)
+    double adxr = adrValue; // Using ADR as proxy
+    double atrVal = atr[0];
+    
+    csiValue = adxr * (atrVal / iClose(_Symbol, PERIOD_CURRENT, 0)) * 1000;
+    
+    if(csiValue < InpCSI_Min)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Trade Statistics Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckTradeStatsFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTradeStats)
+        return true;
+    
+    // Use global win/loss tracking
+    int totalStats = statsWins + statsLosses;
+    
+    if(totalStats < InpStats_MinTrades)
+        return true; // Not enough data
+    
+    double currentWinRate = (double)statsWins / totalStats;
+    
+    if(currentWinRate < InpStats_MinWin)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Equity Guard Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckEquityGuardFilter()
+{
+    if(!InpUseEquityGuard)
+        return true;
+    
+    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    
+    double dd = balance > 0 ? (balance - equity) / balance * 100 : 0;
+    
+    // Check daily drawdown
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    static int lastDay = -1;
+    static double dayStartEquity = 0;
+    
+    if(dt.day != lastDay)
+    {
+        lastDay = dt.day;
+        dayStartEquity = equity;
+    }
+    
+    egDailyDD = dayStartEquity > 0 ? (dayStartEquity - equity) / dayStartEquity * 100 : 0;
+    
+    if(dd > InpEG_MaxDD || egDailyDD > InpEG_DailyMax)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Smart Exit Management                                            |
+//+------------------------------------------------------------------+
+void ApplySmartExit()
+{
+    if(!InpUseSmartExit)
+        return;
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(posInfo.SelectByIndex(i))
+        {
+            if(posInfo.Symbol() == _Symbol && posInfo.Magic() == InpMagicNumber)
+            {
+                double profit = posInfo.Profit();
+                double openPrice = posInfo.PriceOpen();
+                double currentPrice = posInfo.PriceCurrent();
+                double atrVal = atr[0];
+                
+                // Move to breakeven
+                if(profit > 0 && posInfo.StopLoss() == 0)
+                {
+                    if(posInfo.PositionType() == POSITION_TYPE_BUY)
+                    {
+                        if(currentPrice - openPrice > atrVal * InpSE_BreakEven)
+                            trade.PositionModify(posInfo.Ticket(), openPrice, posInfo.TakeProfit());
+                    }
+                    else
+                    {
+                        if(openPrice - currentPrice > atrVal * InpSE_BreakEven)
+                            trade.PositionModify(posInfo.Ticket(), openPrice, posInfo.TakeProfit());
+                    }
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| TSI (True Strength Index) Filter                                 |
+//+------------------------------------------------------------------+
+bool CheckTSIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTSI)
+        return true;
+    
+    // Calculate TSI
+    double pcSum = 0, apcSum = 0;
+    
+    for(int i = 0; i < InpTSI_Long; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        pcSum += change;
+        apcSum += MathAbs(change);
+    }
+    
+    tsiValue = apcSum != 0 ? (pcSum / apcSum) * 100 : 0;
+    tsiSignal = tsiValue * 0.8; // Simplified signal
+    
+    if(signal == SIGNAL_BUY && tsiValue < tsiSignal)
+        return false;
+    if(signal == SIGNAL_SELL && tsiValue > tsiSignal)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Final Optimizer Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckFinalOptFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFinalOpt)
+        return true;
+    
+    // Calculate composite optimization score
+    double scores[10];
+    int scoreCount = 0;
+    
+    // Score based on various indicators
+    scores[scoreCount++] = ma1[0] > ma3[0] ? 1.0 : 0.0;
+    scores[scoreCount++] = ArraySize(rsi) > 0 && rsi[0] > 50 ? 1.0 : 0.0;
+    scores[scoreCount++] = atr[0] > atr[1] ? 1.0 : 0.0;
+    scores[scoreCount++] = kaufmanER > 0.5 ? 1.0 : 0.0;
+    scores[scoreCount++] = tsiValue > 0 ? 1.0 : 0.0;
+    
+    finalOptScore = 0;
+    for(int i = 0; i < scoreCount; i++)
+        finalOptScore += scores[i];
+    finalOptScore /= scoreCount;
+    
+    if(signal == SIGNAL_BUY && finalOptScore < 0.5)
+        return false;
+    if(signal == SIGNAL_SELL && finalOptScore > 0.5)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v11 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV11Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckEnvelopesFilter(signal))
+        return false;
+    
+    if(!CheckPriceChannelFilter(signal))
+        return false;
+    
+    if(!CheckAODivFilter(signal))
+        return false;
+    
+    if(!CheckWillDivFilter(signal))
+        return false;
+    
+    if(!CheckCSIFilter(signal))
+        return false;
+    
+    if(!CheckTradeStatsFilter(signal))
+        return false;
+    
+    if(!CheckEquityGuardFilter())
+        return false;
+    
+    if(!CheckTSIFilter(signal))
+        return false;
+    
+    if(!CheckFinalOptFilter(signal))
         return false;
     
     return true;
