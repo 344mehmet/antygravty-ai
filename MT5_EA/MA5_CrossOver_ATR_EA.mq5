@@ -470,7 +470,59 @@ input group "=== EHLERS FISHER TRANSFORM ==="
 input bool     InpUseEhlers        = true;         // Ehlers Kullan
 input int      InpEhlers_Period    = 10;           // Periyot
 
-COrderInfo     orderInfo;
+input group "=== CMO (Chande Momentum) ==="
+input bool     InpUseCMO           = true;         // CMO Kullan
+input int      InpCMO_Period       = 9;            // CMO Periyodu
+input int      InpCMO_Overbought   = 50;           // Aşırı Alım
+input int      InpCMO_Oversold     = -50;          // Aşırı Satım
+
+input group "=== KVO (Klinger Volume) ==="
+input bool     InpUseKVO           = true;         // KVO Kullan
+input int      InpKVO_Fast         = 34;           // Fast EMA
+input int      InpKVO_Slow         = 55;           // Slow EMA
+input int      InpKVO_Signal       = 13;           // Signal
+
+input group "=== TWIGGS MONEY FLOW ==="
+input bool     InpUseTwiggs        = true;         // Twiggs Kullan
+input int      InpTwiggs_Period    = 21;           // Periyot
+
+input group "=== LINEAR REGRESSION CHANNEL ==="
+input bool     InpUseLRC           = true;         // LRC Kullan
+input int      InpLRC_Period       = 100;          // Periyot
+input double   InpLRC_Deviation    = 2.0;          // Deviation
+
+input group "=== STANDARD ERROR BANDS ==="
+input bool     InpUseSEB           = true;         // SEB Kullan
+input int      InpSEB_Period       = 21;           // Periyot
+input double   InpSEB_Mult         = 2.0;          // Multiplier
+
+input group "=== PERCENT B (%B) ==="
+input bool     InpUsePercentB      = true;         // %B Kullan
+input int      InpPercentB_Period  = 20;           // BB Periyodu
+input double   InpPercentB_Dev     = 2.0;          // BB Deviation
+
+input group "=== ELDER IMPULSE SYSTEM ==="
+input bool     InpUseElderImpulse  = true;         // Elder Impulse Kullan
+input int      InpElder_EMA        = 13;           // EMA Periyodu
+
+input group "=== TTM TREND ==="
+input bool     InpUseTTM           = true;         // TTM Trend Kullan
+input int      InpTTM_Period       = 5;            // Periyot
+
+input group "=== SQUEEZE PRO ==="
+input bool     InpUseSqueezePro    = true;         // Squeeze Pro Kullan
+input int      InpSqPro_BB         = 20;           // BB Periyodu
+input double   InpSqPro_BBMult     = 2.0;          // BB Çarpanı
+input double   InpSqPro_KC1        = 1.0;          // KC1 Çarpanı
+input double   InpSqPro_KC2        = 1.5;          // KC2 Çarpanı
+input double   InpSqPro_KC3        = 2.0;          // KC3 Çarpanı
+
+input group "=== NEURAL NETWORK SCORE ==="
+input bool     InpUseNeural        = false;        // Neural Net Kullan
+input int      InpNN_Layers        = 3;            // Hidden Layers
+input int      InpNN_Neurons       = 10;           // Neurons per Layer
+input double   InpNN_MinScore      = 0.7;          // Min Score
+
 
 // MA Handles
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -601,6 +653,18 @@ double mcGinleyValue = 0, mcGinleyPrev = 0;
 double almaValue = 0;
 double kaufmanER = 0;
 double fisherValue = 0, fisherPrev = 0;
+
+// NEW v9 VALUES
+double cmoValue = 0;
+double kvoValue = 0, kvoSignal = 0;
+double twiggsValue = 0;
+double lrcMiddle = 0, lrcUpper = 0, lrcLower = 0;
+double sebMiddle = 0, sebUpper = 0, sebLower = 0;
+double percentB = 0;
+int elderImpulse = 0; // 1=Green, -1=Red, 0=Blue
+bool ttmTrend = true;
+int squeezeProLevel = 0; // 0=No squeeze, 1-3=Squeeze levels
+double nnScore = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -4952,6 +5016,398 @@ bool ApplyV8Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckEhlersFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v9 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| CMO (Chande Momentum Oscillator) Filter                          |
+//+------------------------------------------------------------------+
+bool CheckCMOFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCMO)
+        return true;
+    
+    double sumUp = 0, sumDown = 0;
+    for(int i = 0; i < InpCMO_Period; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        if(change > 0) sumUp += change;
+        else sumDown -= change;
+    }
+    
+    cmoValue = (sumUp + sumDown) != 0 ? 100 * (sumUp - sumDown) / (sumUp + sumDown) : 0;
+    
+    if(signal == SIGNAL_BUY && cmoValue > InpCMO_Overbought)
+        return false;
+    if(signal == SIGNAL_SELL && cmoValue < InpCMO_Oversold)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| KVO (Klinger Volume Oscillator) Filter                           |
+//+------------------------------------------------------------------+
+bool CheckKVOFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKVO)
+        return true;
+    
+    // Simplified KVO calculation
+    double trend = 0;
+    double hlc = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0) + iClose(_Symbol, PERIOD_CURRENT, 0)) / 3.0;
+    double hlcPrev = (iHigh(_Symbol, PERIOD_CURRENT, 1) + iLow(_Symbol, PERIOD_CURRENT, 1) + iClose(_Symbol, PERIOD_CURRENT, 1)) / 3.0;
+    
+    if(hlc > hlcPrev) trend = 1;
+    else trend = -1;
+    
+    double dm = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    kvoValue = trend * dm * iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && kvoValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && kvoValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Twiggs Money Flow Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckTwiggsFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTwiggs)
+        return true;
+    
+    // Simplified Twiggs MF
+    double trh = MathMax(iHigh(_Symbol, PERIOD_CURRENT, 0), iClose(_Symbol, PERIOD_CURRENT, 1));
+    double trl = MathMin(iLow(_Symbol, PERIOD_CURRENT, 0), iClose(_Symbol, PERIOD_CURRENT, 1));
+    double tr = trh - trl;
+    
+    double adv = ((iClose(_Symbol, PERIOD_CURRENT, 0) - trl) - (trh - iClose(_Symbol, PERIOD_CURRENT, 0))) / (tr != 0 ? tr : 1);
+    twiggsValue = adv * iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && twiggsValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && twiggsValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Linear Regression Channel Filter                                 |
+//+------------------------------------------------------------------+
+bool CheckLRCFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLRC)
+        return true;
+    
+    // Calculate Linear Regression
+    double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    
+    for(int i = 0; i < InpLRC_Period; i++)
+    {
+        sumX += i;
+        sumY += iClose(_Symbol, PERIOD_CURRENT, i);
+        sumXY += i * iClose(_Symbol, PERIOD_CURRENT, i);
+        sumX2 += i * i;
+    }
+    
+    double n = InpLRC_Period;
+    double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    double intercept = (sumY - slope * sumX) / n;
+    
+    lrcMiddle = intercept;
+    
+    // Calculate standard deviation
+    double sumErr = 0;
+    for(int i = 0; i < InpLRC_Period; i++)
+    {
+        double predicted = intercept + slope * i;
+        sumErr += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - predicted, 2);
+    }
+    double stdDev = MathSqrt(sumErr / n);
+    
+    lrcUpper = lrcMiddle + stdDev * InpLRC_Deviation;
+    lrcLower = lrcMiddle - stdDev * InpLRC_Deviation;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > lrcUpper)
+        return false;
+    if(signal == SIGNAL_SELL && close < lrcLower)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Standard Error Bands Filter                                      |
+//+------------------------------------------------------------------+
+bool CheckSEBFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSEB)
+        return true;
+    
+    // Calculate SEB
+    double sum = 0;
+    for(int i = 0; i < InpSEB_Period; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    sebMiddle = sum / InpSEB_Period;
+    
+    double sumErr = 0;
+    for(int i = 0; i < InpSEB_Period; i++)
+        sumErr += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - sebMiddle, 2);
+    
+    double stdErr = MathSqrt(sumErr / InpSEB_Period);
+    
+    sebUpper = sebMiddle + stdErr * InpSEB_Mult;
+    sebLower = sebMiddle - stdErr * InpSEB_Mult;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > sebUpper)
+        return false;
+    if(signal == SIGNAL_SELL && close < sebLower)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Percent B (%B) Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckPercentBFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePercentB)
+        return true;
+    
+    // Calculate Bollinger Bands %B
+    double sum = 0;
+    for(int i = 0; i < InpPercentB_Period; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double middle = sum / InpPercentB_Period;
+    
+    double sumDev = 0;
+    for(int i = 0; i < InpPercentB_Period; i++)
+        sumDev += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - middle, 2);
+    
+    double stdDev = MathSqrt(sumDev / InpPercentB_Period);
+    double upper = middle + stdDev * InpPercentB_Dev;
+    double lower = middle - stdDev * InpPercentB_Dev;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    percentB = (upper - lower) != 0 ? (close - lower) / (upper - lower) : 0.5;
+    
+    if(signal == SIGNAL_BUY && percentB > 1.0)
+        return false;
+    if(signal == SIGNAL_SELL && percentB < 0.0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Elder Impulse System Filter                                      |
+//+------------------------------------------------------------------+
+bool CheckElderImpulseFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseElderImpulse)
+        return true;
+    
+    // Calculate EMA
+    double ema0 = 0, ema1 = 0;
+    double mult = 2.0 / (InpElder_EMA + 1);
+    
+    for(int i = InpElder_EMA - 1; i >= 0; i--)
+    {
+        if(i == InpElder_EMA - 1)
+            ema0 = iClose(_Symbol, PERIOD_CURRENT, i);
+        else
+            ema0 = iClose(_Symbol, PERIOD_CURRENT, i) * mult + ema0 * (1 - mult);
+    }
+    
+    for(int i = InpElder_EMA; i >= 1; i--)
+    {
+        if(i == InpElder_EMA)
+            ema1 = iClose(_Symbol, PERIOD_CURRENT, i);
+        else
+            ema1 = iClose(_Symbol, PERIOD_CURRENT, i) * mult + ema1 * (1 - mult);
+    }
+    
+    bool emaUp = ema0 > ema1;
+    bool macdUp = ArraySize(macdHist) > 1 ? macdHist[0] > macdHist[1] : true;
+    
+    if(emaUp && macdUp) elderImpulse = 1;      // Green
+    else if(!emaUp && !macdUp) elderImpulse = -1; // Red
+    else elderImpulse = 0;                      // Blue
+    
+    if(signal == SIGNAL_BUY && elderImpulse == -1)
+        return false;
+    if(signal == SIGNAL_SELL && elderImpulse == 1)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| TTM Trend Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckTTMFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTTM)
+        return true;
+    
+    // Calculate TTM Trend
+    double avgHigh = 0, avgLow = 0;
+    for(int i = 0; i < InpTTM_Period; i++)
+    {
+        avgHigh += iHigh(_Symbol, PERIOD_CURRENT, i);
+        avgLow += iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    avgHigh /= InpTTM_Period;
+    avgLow /= InpTTM_Period;
+    double avgHL = (avgHigh + avgLow) / 2.0;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    ttmTrend = close > avgHL;
+    
+    if(signal == SIGNAL_BUY && !ttmTrend)
+        return false;
+    if(signal == SIGNAL_SELL && ttmTrend)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Squeeze Pro Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSqueezeProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSqueezePro)
+        return true;
+    
+    // Calculate BB and KC for Squeeze Pro
+    double sum = 0;
+    for(int i = 0; i < InpSqPro_BB; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double bbMid = sum / InpSqPro_BB;
+    
+    double sumDev = 0;
+    for(int i = 0; i < InpSqPro_BB; i++)
+        sumDev += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - bbMid, 2);
+    double bbDev = MathSqrt(sumDev / InpSqPro_BB);
+    
+    double bbUpper = bbMid + bbDev * InpSqPro_BBMult;
+    double bbLower = bbMid - bbDev * InpSqPro_BBMult;
+    
+    double atrVal = atr[0];
+    double kc1Upper = bbMid + atrVal * InpSqPro_KC1;
+    double kc2Upper = bbMid + atrVal * InpSqPro_KC2;
+    double kc3Upper = bbMid + atrVal * InpSqPro_KC3;
+    
+    // Determine squeeze level
+    squeezeProLevel = 0;
+    if(bbLower > bbMid - atrVal * InpSqPro_KC1) squeezeProLevel = 1;
+    if(bbLower > bbMid - atrVal * InpSqPro_KC2) squeezeProLevel = 2;
+    if(bbLower > bbMid - atrVal * InpSqPro_KC3) squeezeProLevel = 3;
+    
+    // Don't trade during high squeeze
+    if(squeezeProLevel >= 2)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Neural Network Score Filter                                      |
+//+------------------------------------------------------------------+
+bool CheckNeuralFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNeural)
+        return true;
+    
+    // Simulated Neural Network with multi-layer perceptron
+    double inputs[10];
+    
+    // Input features
+    inputs[0] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    inputs[1] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    inputs[2] = atr[0] / iClose(_Symbol, PERIOD_CURRENT, 0) * 100;
+    inputs[3] = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 5)) / atr[0];
+    inputs[4] = InpUseVolume && CheckVolumeFilter() ? 1.0 : -1.0;
+    inputs[5] = ArraySize(macdHist) > 0 ? macdHist[0] > 0 ? 1.0 : -1.0 : 0;
+    inputs[6] = kaufmanER;
+    inputs[7] = connorsRSI / 100.0;
+    inputs[8] = smiValue / 100.0;
+    inputs[9] = fisherValue;
+    
+    // Simple feed-forward network simulation
+    double hidden[10];
+    for(int j = 0; j < InpNN_Neurons && j < 10; j++)
+    {
+        hidden[j] = 0;
+        for(int i = 0; i < 10; i++)
+            hidden[j] += inputs[i] * (0.1 + 0.1 * (i * j % 5)); // Pseudo-weights
+        hidden[j] = MathTanh(hidden[j]); // Activation
+    }
+    
+    // Output layer
+    nnScore = 0;
+    for(int j = 0; j < InpNN_Neurons && j < 10; j++)
+        nnScore += hidden[j] * (0.2 + 0.1 * (j % 3));
+    nnScore = (MathTanh(nnScore) + 1) / 2; // Normalize to 0-1
+    
+    if(signal == SIGNAL_BUY && nnScore < InpNN_MinScore)
+        return false;
+    if(signal == SIGNAL_SELL && nnScore > (1 - InpNN_MinScore))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v9 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV9Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckCMOFilter(signal))
+        return false;
+    
+    if(!CheckKVOFilter(signal))
+        return false;
+    
+    if(!CheckTwiggsFilter(signal))
+        return false;
+    
+    if(!CheckLRCFilter(signal))
+        return false;
+    
+    if(!CheckSEBFilter(signal))
+        return false;
+    
+    if(!CheckPercentBFilter(signal))
+        return false;
+    
+    if(!CheckElderImpulseFilter(signal))
+        return false;
+    
+    if(!CheckTTMFilter(signal))
+        return false;
+    
+    if(!CheckSqueezeProFilter(signal))
+        return false;
+    
+    if(!CheckNeuralFilter(signal))
         return false;
     
     return true;
