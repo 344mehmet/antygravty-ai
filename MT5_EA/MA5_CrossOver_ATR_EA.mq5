@@ -317,7 +317,57 @@ input bool     InpUseML            = false;        // ML Score Kullan
 input double   InpML_MinScore      = 0.6;          // Min Score (0-1)
 input int      InpML_Features      = 10;           // Feature Sayısı
 
-//+------------------------------------------------------------------+
+input group "=== VWAP ==="
+input bool     InpUseVWAP          = true;         // VWAP Kullan
+input bool     InpVWAP_Daily       = true;         // Günlük VWAP
+input double   InpVWAP_Deviation   = 1.0;          // Standart Sapma Çarpanı
+
+input group "=== SUPER TREND ==="
+input bool     InpUseSuperTrend    = true;         // Super Trend Kullan
+input int      InpST_Period        = 10;           // ATR Periyodu
+input double   InpST_Multiplier    = 3.0;          // Çarpan
+
+input group "=== CHAIKIN OSCILLATOR ==="
+input bool     InpUseChaikin       = true;         // Chaikin Kullan
+input int      InpChaikin_Fast     = 3;            // Hızlı Periyot
+input int      InpChaikin_Slow     = 10;           // Yavaş Periyot
+
+input group "=== ELDER RAY ==="
+input bool     InpUseElderRay      = true;         // Elder Ray Kullan
+input int      InpElder_Period     = 13;           // EMA Periyodu
+
+input group "=== AROON ==="
+input bool     InpUseAroon         = true;         // Aroon Kullan
+input int      InpAroon_Period     = 25;           // Aroon Periyodu
+input int      InpAroon_Level      = 70;           // Güçlü Trend Seviyesi
+
+input group "=== CHANDELIER EXIT ==="
+input bool     InpUseChandelier    = true;         // Chandelier Kullan
+input int      InpChand_Period     = 22;           // ATR Periyodu
+input double   InpChand_Mult       = 3.0;          // ATR Çarpanı
+
+input group "=== HULL MA ==="
+input bool     InpUseHullMA        = true;         // Hull MA Kullan
+input int      InpHull_Period      = 20;           // Hull Periyodu
+
+input group "=== SQUEEZE MOMENTUM ==="
+input bool     InpUseSqueeze       = true;         // Squeeze Kullan
+input int      InpSqueeze_BB       = 20;           // BB Periyodu
+input int      InpSqueeze_KC       = 20;           // KC Periyodu
+input double   InpSqueeze_BBMult   = 2.0;          // BB Çarpanı
+input double   InpSqueeze_KCMult   = 1.5;          // KC Çarpanı
+
+input group "=== RANGE FILTER ==="
+input bool     InpUseRange         = true;         // Range Filter Kullan
+input int      InpRange_Period     = 50;           // Bakış Periyodu
+input double   InpRange_Mult       = 2.0;          // Range Çarpanı
+
+input group "=== NEWS CALENDAR ==="
+input bool     InpUseNewsAPI       = false;        // News API Kullan
+input int      InpNews_Impact      = 2;            // Min Impact (1-3)
+input int      InpNews_Before      = 60;           // Önce (dakika)
+input int      InpNews_After       = 30;           // Sonra (dakika)
+
 CTrade         trade;
 CPositionInfo  posInfo;
 COrderInfo     orderInfo;
@@ -403,6 +453,23 @@ double gatorUp[], gatorDown[];
 double heikinOpen[], heikinClose[], heikinHigh[], heikinLow[];
 double mlScore = 0;
 double profilePOC = 0, profileVAH = 0, profileVAL = 0;
+
+// NEW v6 HANDLES
+int handleChaikin;
+int handleBullPower;
+int handleBearPower;
+
+// NEW v6 VALUES
+double vwapValue = 0, vwapUpper = 0, vwapLower = 0;
+double superTrendValue = 0;
+bool superTrendUp = true;
+double chaikinValue[];
+double bullPower[], bearPower[];
+double aroonUp[], aroonDown[];
+double chandelierLong = 0, chandelierShort = 0;
+double hullMA = 0, hullMAPrev = 0;
+bool squeezeOn = false;
+double rangeFilter = 0, rangeFilterPrev = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -3574,6 +3641,428 @@ bool ApplyV5Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckMLFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v6 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| VWAP Filter                                                      |
+//+------------------------------------------------------------------+
+bool CheckVWAPFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVWAP)
+        return true;
+    
+    // Calculate VWAP
+    double sumPV = 0, sumV = 0, sumPV2 = 0;
+    int period = InpVWAP_Daily ? PeriodSeconds(PERIOD_D1) / PeriodSeconds(PERIOD_CURRENT) : 100;
+    
+    for(int i = 0; i < period && i < 500; i++)
+    {
+        double typical = (iHigh(_Symbol, PERIOD_CURRENT, i) + 
+                         iLow(_Symbol, PERIOD_CURRENT, i) + 
+                         iClose(_Symbol, PERIOD_CURRENT, i)) / 3.0;
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        
+        sumPV += typical * vol;
+        sumV += vol;
+        sumPV2 += typical * typical * vol;
+    }
+    
+    if(sumV == 0) return true;
+    
+    vwapValue = sumPV / sumV;
+    double variance = (sumPV2 / sumV) - (vwapValue * vwapValue);
+    double stdDev = MathSqrt(MathAbs(variance));
+    
+    vwapUpper = vwapValue + stdDev * InpVWAP_Deviation;
+    vwapLower = vwapValue - stdDev * InpVWAP_Deviation;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > vwapUpper)
+        return false;
+    if(signal == SIGNAL_SELL && close < vwapLower)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Super Trend Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSuperTrendFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSuperTrend)
+        return true;
+    
+    // Calculate SuperTrend
+    double atrVal = 0;
+    for(int i = 0; i < InpST_Period; i++)
+        atrVal += iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+    atrVal /= InpST_Period;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double hl2 = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0)) / 2.0;
+    
+    double upperBand = hl2 + InpST_Multiplier * atrVal;
+    double lowerBand = hl2 - InpST_Multiplier * atrVal;
+    
+    // Determine trend
+    if(close > superTrendValue)
+    {
+        superTrendUp = true;
+        superTrendValue = lowerBand;
+    }
+    else
+    {
+        superTrendUp = false;
+        superTrendValue = upperBand;
+    }
+    
+    if(signal == SIGNAL_BUY && !superTrendUp)
+        return false;
+    if(signal == SIGNAL_SELL && superTrendUp)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Chaikin Oscillator Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckChaikinFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChaikin)
+        return true;
+    
+    if(CopyBuffer(handleChaikin, 0, 0, 3, chaikinValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(chaikinValue[0] < 0 && chaikinValue[0] < chaikinValue[1])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(chaikinValue[0] > 0 && chaikinValue[0] > chaikinValue[1])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Elder Ray Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckElderRayFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseElderRay)
+        return true;
+    
+    if(CopyBuffer(handleBullPower, 0, 0, 3, bullPower) < 3) return true;
+    if(CopyBuffer(handleBearPower, 0, 0, 3, bearPower) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Bull power should be positive, Bear power negative but rising
+        if(bullPower[0] < 0)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Bear power should be negative, Bull power positive but falling
+        if(bearPower[0] > 0)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Aroon Filter                                                     |
+//+------------------------------------------------------------------+
+bool CheckAroonFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAroon)
+        return true;
+    
+    // Calculate Aroon manually
+    int highestBar = 0, lowestBar = 0;
+    double highestHigh = 0, lowestLow = 999999;
+    
+    for(int i = 0; i < InpAroon_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        if(high > highestHigh) { highestHigh = high; highestBar = i; }
+        if(low < lowestLow) { lowestLow = low; lowestBar = i; }
+    }
+    
+    double aroonUpVal = ((InpAroon_Period - highestBar) * 100.0) / InpAroon_Period;
+    double aroonDownVal = ((InpAroon_Period - lowestBar) * 100.0) / InpAroon_Period;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(aroonUpVal < InpAroon_Level || aroonUpVal < aroonDownVal)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(aroonDownVal < InpAroon_Level || aroonDownVal < aroonUpVal)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Chandelier Exit Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckChandelierFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChandelier)
+        return true;
+    
+    double highestHigh = 0, lowestLow = 999999;
+    double atrSum = 0;
+    
+    for(int i = 0; i < InpChand_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        if(high > highestHigh) highestHigh = high;
+        if(low < lowestLow) lowestLow = low;
+        
+        atrSum += iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double chandATR = atrSum / InpChand_Period;
+    chandelierLong = highestHigh - InpChand_Mult * chandATR;
+    chandelierShort = lowestLow + InpChand_Mult * chandATR;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < chandelierLong)
+        return false;
+    if(signal == SIGNAL_SELL && close > chandelierShort)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Hull MA Filter                                                   |
+//+------------------------------------------------------------------+
+bool CheckHullMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHullMA)
+        return true;
+    
+    // Calculate Hull MA: WMA(2*WMA(n/2) - WMA(n), sqrt(n))
+    int halfPeriod = InpHull_Period / 2;
+    int sqrtPeriod = (int)MathSqrt(InpHull_Period);
+    
+    double wma1 = 0, wma2 = 0, wma3 = 0;
+    double sum1 = 0, sum2 = 0, sum3 = 0;
+    double weight1 = 0, weight2 = 0, weight3 = 0;
+    
+    for(int i = 0; i < halfPeriod; i++)
+    {
+        double w = halfPeriod - i;
+        sum1 += iClose(_Symbol, PERIOD_CURRENT, i) * w;
+        weight1 += w;
+    }
+    wma1 = sum1 / weight1;
+    
+    for(int i = 0; i < InpHull_Period; i++)
+    {
+        double w = InpHull_Period - i;
+        sum2 += iClose(_Symbol, PERIOD_CURRENT, i) * w;
+        weight2 += w;
+    }
+    wma2 = sum2 / weight2;
+    
+    double rawHull = 2 * wma1 - wma2;
+    hullMAPrev = hullMA;
+    hullMA = rawHull; // Simplified
+    
+    if(signal == SIGNAL_BUY && hullMA < hullMAPrev)
+        return false;
+    if(signal == SIGNAL_SELL && hullMA > hullMAPrev)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Squeeze Momentum Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckSqueezeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSqueeze)
+        return true;
+    
+    // Calculate BB and KC bands
+    double bbSum = 0, kcSum = 0;
+    
+    for(int i = 0; i < InpSqueeze_BB; i++)
+        bbSum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double bbMid = bbSum / InpSqueeze_BB;
+    
+    double stdDev = 0;
+    for(int i = 0; i < InpSqueeze_BB; i++)
+    {
+        double diff = iClose(_Symbol, PERIOD_CURRENT, i) - bbMid;
+        stdDev += diff * diff;
+    }
+    stdDev = MathSqrt(stdDev / InpSqueeze_BB);
+    
+    double bbUpper = bbMid + InpSqueeze_BBMult * stdDev;
+    double bbLower = bbMid - InpSqueeze_BBMult * stdDev;
+    
+    double atrKC = atr[0];
+    double kcUpper = bbMid + InpSqueeze_KCMult * atrKC;
+    double kcLower = bbMid - InpSqueeze_KCMult * atrKC;
+    
+    // Squeeze is ON when BB is inside KC
+    squeezeOn = (bbLower > kcLower && bbUpper < kcUpper);
+    
+    if(squeezeOn)
+        return false; // Don't trade during squeeze
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Range Filter                                                     |
+//+------------------------------------------------------------------+
+bool CheckRangeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRange)
+        return true;
+    
+    double sum = 0;
+    for(int i = 0; i < InpRange_Period; i++)
+        sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double avg = sum / InpRange_Period;
+    
+    double range = 0;
+    for(int i = 0; i < InpRange_Period; i++)
+        range += MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - avg);
+    range = range / InpRange_Period * InpRange_Mult;
+    
+    rangeFilterPrev = rangeFilter;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(close > avg + range)
+        rangeFilter = avg + range;
+    else if(close < avg - range)
+        rangeFilter = avg - range;
+    else
+        rangeFilter = rangeFilterPrev;
+    
+    if(signal == SIGNAL_BUY && close < rangeFilter)
+        return false;
+    if(signal == SIGNAL_SELL && close > rangeFilter)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| News Calendar API Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckNewsAPIFilter()
+{
+    if(!InpUseNewsAPI)
+        return true;
+    
+    // MQL5 Calendar integration
+    MqlCalendarValue values[];
+    datetime from = TimeCurrent() - InpNews_Before * 60;
+    datetime to = TimeCurrent() + InpNews_After * 60;
+    
+    if(CalendarValueHistory(values, from, to))
+    {
+        for(int i = 0; i < ArraySize(values); i++)
+        {
+            MqlCalendarEvent event;
+            if(CalendarEventById(values[i].event_id, event))
+            {
+                if((int)event.importance >= InpNews_Impact)
+                {
+                    Print("📰 Major news event detected: ", event.name);
+                    return false;
+                }
+            }
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v6 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV6Indicators()
+{
+    if(InpUseChaikin)
+        handleChaikin = iChaikin(_Symbol, PERIOD_CURRENT, InpChaikin_Fast, InpChaikin_Slow, MODE_EMA, VOLUME_TICK);
+    
+    if(InpUseElderRay)
+    {
+        handleBullPower = iBullsPower(_Symbol, PERIOD_CURRENT, InpElder_Period);
+        handleBearPower = iBearsPower(_Symbol, PERIOD_CURRENT, InpElder_Period);
+    }
+    
+    ArraySetAsSeries(chaikinValue, true);
+    ArraySetAsSeries(bullPower, true);
+    ArraySetAsSeries(bearPower, true);
+    ArraySetAsSeries(aroonUp, true);
+    ArraySetAsSeries(aroonDown, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v6 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV6Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckVWAPFilter(signal))
+        return false;
+    
+    if(!CheckSuperTrendFilter(signal))
+        return false;
+    
+    if(!CheckChaikinFilter(signal))
+        return false;
+    
+    if(!CheckElderRayFilter(signal))
+        return false;
+    
+    if(!CheckAroonFilter(signal))
+        return false;
+    
+    if(!CheckChandelierFilter(signal))
+        return false;
+    
+    if(!CheckHullMAFilter(signal))
+        return false;
+    
+    if(!CheckSqueezeFilter(signal))
+        return false;
+    
+    if(!CheckRangeFilter(signal))
+        return false;
+    
+    if(!CheckNewsAPIFilter())
         return false;
     
     return true;
