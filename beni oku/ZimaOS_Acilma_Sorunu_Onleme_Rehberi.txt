@@ -1,0 +1,73 @@
+# ZimaOS Açılma Sorunu Önleme Rehberi
+
+## Sistem Durumu
+- **ZimaOS Sürümü:** v1.5.3 Community Edition (Güncel)
+- **SSH Erişimi:** Etkin
+- **Docker:** Çalışıyor
+- **IP Adresi:** 192.168.1.43
+
+## Açılma Sorunlarının Nedenleri
+
+### 1. Disk Doluluk Sorunu (ZimaOS-HD Full)
+- **Belirti:** Web arayüzü yanıt vermiyor, servisler başlamıyor
+- **Çözüm:** Docker temizliği, log rotasyonu
+
+### 2. Ağ Arayüzü Sorunları
+- **Belirti:** Ağda görünmüyor, ping yanıt vermiyor
+- **Çözüm:** Energy Efficient Ethernet (EEE) kapatma
+
+### 3. Docker Servis Hatası
+- **Belirti:** Konteynerler başlamıyor
+- **Çözüm:** Docker servisini yeniden başlat
+
+## Bakım Script'i Kullanımı
+
+SSH ile bağlan ve script'i çalıştır:
+```bash
+ssh root@192.168.1.43
+chmod +x /root/zimaos_maintenance.sh
+./zimaos_maintenance.sh
+```
+
+## Otomatik Önlemler (Script İçeriği)
+1. ✅ Disk alanı kontrolü ve temizlik
+2. ✅ Docker servis durumu kontrolü
+3. ✅ Kullanılmayan konteyner/volume temizliği
+4. ✅ EEE kapatma (ağ stabilitesi)
+5. ✅ Bellek optimizasyonu
+6. ✅ Kritik servis kontrolü
+7. ✅ Boot partition durumu
+8. ✅ Unhealthy konteyner tespiti ve yeniden başlatma
+
+## Manuel Müdahale Adımları
+
+### Sistem Yanıt Vermiyorsa:
+1. Fiziksel güç düğmesi ile yeniden başlat
+2. Monitör/klavye bağla ve konsol erişimi kontrol et
+3. BIOS'ta: Secure Boot KAPALI, AHCI modu AÇIK olmalı
+
+### Ağ Sorunu Varsa:
+```bash
+# Ağ arayüzünü yeniden başlat
+ip link set eth0 down && ip link set eth0 up
+
+# DHCP yenile
+dhclient -r && dhclient eth0
+
+# EEE kapat
+ethtool --set-eee eth0 eee off
+```
+
+### Docker Sorunu Varsa:
+```bash
+systemctl restart docker docker.socket
+docker system prune -af
+```
+
+## Haftalık Bakım (Otomatik)
+Script, her Pazar saat 03:00'te otomatik çalışacak şekilde ayarlanır.
+
+## Önemli Notlar
+⚠️ ZimaOS appliance OS olduğundan `apt upgrade` KULLANILMAZ
+⚠️ Sistem güncellemeleri yalnızca web arayüzünden yapılır
+⚠️ Güncelleme öncesi mutlaka yedek alın
