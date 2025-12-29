@@ -1,0 +1,19 @@
+{
+    "name": "llm-ordusu",
+    "version": "1.0.0",
+    "description": "LLM Ordusu - Zeki Düşünce Motoru",
+    "main": "index.html",
+    "scripts": {
+        "start": "npx serve .",
+        "build:android": "npx cap copy android && npx cap open android",
+        "build:apk": "cd android && ./gradlew assembleDebug && copy app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\LLM_Ordusu.apk"
+    },
+    "author": "344Mehmet",
+    "license": "MIT",
+    "devDependencies": {
+        "@capacitor/android": "^6.2.1",
+        "@capacitor/cli": "^6.2.1",
+        "@capacitor/core": "^6.2.1",
+        "serve": "^14.0.0"
+    }
+}

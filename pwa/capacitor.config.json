@@ -1,0 +1,15 @@
+{
+    "appId": "com.llmordusu.app",
+    "appName": "LLM Ordusu",
+    "webDir": "www",
+    "server": {
+        "androidScheme": "https",
+        "cleartext": true,
+        "allowNavigation": [
+            "*"
+        ]
+    },
+    "android": {
+        "allowMixedContent": true
+    }
+}
