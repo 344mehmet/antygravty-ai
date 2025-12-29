@@ -1,0 +1,41 @@
+# Fine-tuning Configuration
+# 344Mehmet LLM Ordusu
+
+model:
+  name: "unsloth/Phi-3-mini-4k-instruct"
+  max_seq_length: 2048
+  load_in_4bit: true
+
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  batch_size: 2
+  gradient_accumulation_steps: 4
+  learning_rate: 2e-4
+  max_steps: 100
+  warmup_steps: 5
+  logging_steps: 10
+  save_steps: 50
+  fp16: true
+  optim: "adamw_8bit"
+
+data:
+  path: "/app/data/training_data.jsonl"
+  format: "jsonl"
+  text_field: "text"
+
+output:
+  dir: "/app/output"
+  gguf: true
+  quantization: "q4_k_m"

@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # LLM Fine-tuning with Unsloth/QLoRA
+  finetune:
+    build: ./finetune_docker
+    container_name: llm-finetune
+    volumes:
+      - ./training_data.jsonl:/app/data/training_data.jsonl:ro
+      - ./finetune_output:/app/output
+      - finetune_cache:/root/.cache
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - MODEL_NAME=unsloth/Phi-3-mini-4k-instruct
+      - OUTPUT_DIR=/app/output
+      - TRAIN_DATA=/app/data/training_data.jsonl
+      - MAX_STEPS=100
+      - LEARNING_RATE=2e-4
+      - BATCH_SIZE=2
+    # GPU kullanımı için (NVIDIA Docker gerekli)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    networks:
+      - finetune-network
+
+  # CPU-only version (GPU yoksa bu kullanılır)
+  finetune-cpu:
+    build:
+      context: ./finetune_docker
+      dockerfile: Dockerfile.cpu
+    container_name: llm-finetune-cpu
+    profiles:
+      - cpu-only
+    volumes:
+      - ./training_data.jsonl:/app/data/training_data.jsonl:ro
+      - ./finetune_output:/app/output
+      - finetune_cache:/root/.cache
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - MODEL_NAME=microsoft/phi-2
+      - OUTPUT_DIR=/app/output
+      - TRAIN_DATA=/app/data/training_data.jsonl
+      - MAX_STEPS=50
+      - LEARNING_RATE=2e-4
+      - BATCH_SIZE=1
+    networks:
+      - finetune-network
+
+volumes:
+  finetune_cache:
+
+
+networks:
+  finetune-network:
+    driver: bridge

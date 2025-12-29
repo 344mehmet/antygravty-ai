@@ -1,0 +1,37 @@
+# CPU-only Fine-tuning Dockerfile (GPU olmayan sistemler için)
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --upgrade pip
+
+# Install CPU-only PyTorch
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Install training dependencies (smaller models for CPU)
+RUN pip install \
+    transformers>=4.36.0 \
+    datasets>=2.16.0 \
+    accelerate>=0.25.0 \
+    peft>=0.7.0 \
+    trl>=0.7.0 \
+    huggingface_hub>=0.20.0 \
+    sentencepiece
+
+# Copy training script
+COPY train_cpu.py train.py
+COPY config.yaml .
+
+# Create directories
+RUN mkdir -p /app/output /app/data
+
+CMD ["python", "train.py"]
