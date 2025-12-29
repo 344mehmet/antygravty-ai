@@ -1262,6 +1262,46 @@ input group "=== ETERNAL AI ==="
 input bool     InpUseEternalAI     = false;        // Eternal AI Kullan
 input double   InpEAI_FinalGate    = 0.99;         // The Final Overseer gate
 
+input group "=== ZENITH POINT ==="
+input bool     InpUseZenithPoint   = true;         // Zenith Point Kullan
+input int      InpZP_Lookback      = 200;          // Highest/Lowest lookback
+
+input group "=== APEX PREDATOR ==="
+input bool     InpUseApexPredator  = true;         // Apex Predator Kullan
+input double   InpAP_Strength      = 0.7;          // Trend dominate factor
+
+input group "=== SUMMIT FILTER ==="
+input bool     InpUseSummit        = true;         // Summit Filter Kullan
+input double   InpSF_SlopeThreshold= 0.001;        // Acceleration slope
+
+input group "=== NADIR DETECTOR ==="
+input bool     InpUseNadirDetector = true;         // Nadir Detector Kullan
+input int      InpND_BasePeriod    = 50;           // Base floor check
+
+input group "=== POLARIS SIGNAL ==="
+input bool     InpUsePolaris       = true;         // Polaris Signal Kullan
+input int      InpPS_TrueNorth     = 1000;         // Anchor trend lookback
+
+input group "=== HORIZON X ==="
+input bool     InpUseHorizonX      = true;         // Horizon X Kullan
+input double   InpHX_Curvature     = 2.0;          // Price-Time bend
+
+input group "=== ECLIPSE ENGINE ==="
+input bool     InpUseEclipse       = true;         // Eclipse Engine Kullan
+input int      InpEE_Cooldown      = 5;            // Signal overlap cooldown
+
+input group "=== AURORA BOREALIS ==="
+input bool     InpUseAurora        = true;         // Aurora Borealis Kullan
+input double   InpAB_Frequency     = 1.5;          // Volatility variance factor
+
+input group "=== SOLAR FLARE ==="
+input bool     InpUseSolarFlare    = true;         // Solar Flare Kullan
+input double   InpSF_Intensity     = 3.0;          // Sudden spike limit
+
+input group "=== ZENITH AI ==="
+input bool     InpUseZenithAI      = false;        // Zenith AI Kullan
+input double   InpZAI_Threshold    = 0.98;         // Elite Signal Threshold
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1599,6 +1639,18 @@ double kbKarmaScore = 0;
 bool hgGateOpened = false;
 bool hfFireExcluded = false;
 double eaiEternalAI_Result = 0;
+
+// NEW v27 VALUES - ZENITH 10
+double zpLookbackExtremum = 0;
+double apPredatorScore = 0;
+double sfSummitSlope = 0;
+double ndNadirFloor = 0;
+double psPolarisAnchor = 0;
+double hxCurvatureVal = 0;
+int eeOverlapCount = 0;
+double abFreqVariance = 0;
+double sfFlareIntensity = 0;
+double zaiZenithAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -3051,7 +3103,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v26 Module Aggregates
+    // Apply v1-v27 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3094,6 +3146,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV25Filters(signal)) return false;
     // v26
     if(!ApplyV26Filters(signal)) return false;
+    // v27
+    if(!ApplyV27Filters(signal)) return false;
     
     return true;
 }
@@ -12242,6 +12296,215 @@ bool CheckHeavensGateFilter(ENUM_SIGNAL_TYPE signal)
     if(!hgGateOpened) // Price hasn't broken out of the local "gate"
         return false;
         
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|       ZENITH v27 MODÜL FONKSIYONLARI (10 MODUL) - 268 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Zenith Point Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckZenithPointFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseZenithPoint)
+        return true;
+    
+    // Zenith is the highest point in lookback
+    int highestIdx = iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, InpZP_Lookback, 0);
+    int lowestIdx = iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpZP_Lookback, 0);
+    
+    zpLookbackExtremum = (signal == SIGNAL_BUY) ? (double)lowestIdx : (double)highestIdx;
+    
+    if(signal == SIGNAL_BUY && lowestIdx > 20) return false; // Buying too far from the bottom
+    if(signal == SIGNAL_SELL && highestIdx > 20) return false; // Selling too far from the top
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apex Predator Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckApexPredatorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseApexPredator)
+        return true;
+    
+    // Predator strength: ADX + RSI confirmation
+    double adx = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
+    double rsiVal = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    
+    apPredatorScore = (adx / 100.0) * (MathAbs(rsiVal - 50.0) / 50.0);
+    
+    if(apPredatorScore < InpAP_Strength - 0.3) // Weak predator (Low dominance)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Summit Filter                                                    |
+//+------------------------------------------------------------------+
+bool CheckSummitFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSummit)
+        return true;
+    
+    // Slope of the fast MA
+    sfSummitSlope = (ma1[0] - ma1[1]) / ma1[1];
+    
+    if(signal == SIGNAL_BUY && sfSummitSlope < InpSF_SlopeThreshold) return false;
+    if(signal == SIGNAL_SELL && sfSummitSlope > -InpSF_SlopeThreshold) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Nadir Detector Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckNadirDetectorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNadirDetector)
+        return true;
+    
+    // Floor detection: Price relative to local low
+    double localLow = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpND_BasePeriod, 0));
+    ndNadirFloor = (iClose(_Symbol, PERIOD_CURRENT, 0) - localLow) / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(signal == SIGNAL_BUY && ndNadirFloor > 2.0) return false; // Too high from floor
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Polaris Signal Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckPolarisFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePolaris)
+        return true;
+    
+    // Anchor trend check
+    double anchorMA = iMA(_Symbol, PERIOD_CURRENT, InpPS_TrueNorth, 0, MODE_SMA, PRICE_CLOSE);
+    psPolarisAnchor = iClose(_Symbol, PERIOD_CURRENT, 0) - anchorMA;
+    
+    if(signal == SIGNAL_BUY && psPolarisAnchor < 0) return false;
+    if(signal == SIGNAL_SELL && psPolarisAnchor > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Horizon X Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckHorizonXFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHorizonX)
+        return true;
+    
+    // Curvature approximation: Second derivative of price
+    double p0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double p1 = iClose(_Symbol, PERIOD_CURRENT, 5);
+    double p2 = iClose(_Symbol, PERIOD_CURRENT, 10);
+    
+    hxCurvatureVal = (p0 - 2*p1 + p2);
+    
+    if(MathAbs(hxCurvatureVal) > atr[0] * InpHX_Curvature) // Horizon is warping (Extreme acceleration change)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Eclipse Engine Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckEclipseFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEclipse)
+        return true;
+    
+    // Cooldown logic
+    datetime now = TimeCurrent();
+    if((now - lastSignalTime) < (datetime)(InpEE_Cooldown * 60))
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Aurora Borealis Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckAuroraFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAurora)
+        return true;
+    
+    // Volatility variance factor
+    double sum = 0;
+    for(int i = 0; i < 20; i++) sum += (iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i));
+    double avgRange = sum / 20.0;
+    
+    abFreqVariance = (iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0)) / (avgRange > 0 ? avgRange : 1);
+    
+    if(abFreqVariance > InpAB_Frequency) // Aurora is too bright (Unstable volatility)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Solar Flare Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSolarFlareFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSolarFlare)
+        return true;
+    
+    // Sudden spike detection
+    double move = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    sfFlareIntensity = move / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(sfFlareIntensity > InpSF_Intensity) // Solar flare spike (Likely fade/reversal)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Zenith AI Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckZenithAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseZenithAI)
+        return true;
+    
+    // Top-tier consensus
+    double consensus = (apPredatorScore * 2.0) + (1.0 - hxCurvatureVal/100.0) + (psPolarisAnchor != 0 ? 1 : 0);
+    zaiZenithAI_Result = MathTanh(consensus / 3.0);
+    
+    if(zaiZenithAI_Result < InpZAI_Threshold - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v27 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV27Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckZenithPointFilter(signal)) return false;
+    if(!CheckApexPredatorFilter(signal)) return false;
+    if(!CheckSummitFilter(signal)) return false;
+    if(!CheckNadirDetectorFilter(signal)) return false;
+    if(!CheckPolarisFilter(signal)) return false;
+    if(!CheckHorizonXFilter(signal)) return false;
+    if(!CheckEclipseFilter(signal)) return false;
+    if(!CheckAuroraFilter(signal)) return false;
+    if(!CheckSolarFlareFilter(signal)) return false;
+    if(!CheckZenithAIFilter(signal)) return false;
+    
     return true;
 }
 
