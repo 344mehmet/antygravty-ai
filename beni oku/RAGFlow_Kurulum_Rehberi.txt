@@ -1,0 +1,85 @@
+# RAGFlow ZimaOS Kurulum Rehberi
+
+## RAGFlow Nedir?
+RAGFlow, derin belge anlayışına dayalı açık kaynaklı bir RAG (Retrieval-Augmented Generation) motorudur.
+
+### Temel Özellikler:
+- Gelişmiş ayrıştırma yetenekleriyle derin belge anlayışı
+- PDF, Word, Markdown, TXT desteği
+- Veri güvenliği garantili özel bilgi tabanı
+- Popüler büyük dil modelleriyle entegrasyon
+- Web tabanlı kolay yönetim arayüzü
+
+## Sistem Gereksinimleri
+| Gereksinim | Minimum |
+|------------|---------|
+| CPU | 4 çekirdek (x86-64) |
+| RAM | 16 GB |
+| Disk | 50 GB |
+| Docker | 24.0.0+ |
+
+## Kurulum
+
+### SSH ile ZimaOS'a Bağlan:
+```bash
+ssh root@192.168.1.43
+```
+
+### Kurulum Scriptini Çalıştır:
+```bash
+chmod +x /root/ragflow_install.sh
+./ragflow_install.sh
+```
+
+## Erişim Bilgileri
+
+| Servis | URL |
+|--------|-----|
+| RAGFlow Web UI | http://192.168.1.43:8088 |
+| Open WebUI | http://192.168.1.43:8444 |
+| Ollama API | http://192.168.1.43:11434 |
+
+## Ollama Entegrasyonu
+
+1. RAGFlow web arayüzüne git
+2. Kayıt ol ve giriş yap
+3. **Profil > Model Providers > Ollama** seçeneğini tıkla
+4. Ollama URL: `http://host.docker.internal:11434`
+5. Model adı: `phi3:mini` veya `llama2`
+6. Kaydet
+
+## Belge Yükleme ve Soru-Cevap
+
+1. **Knowledge Base** oluştur
+2. PDF/Word/TXT belgelerini yükle
+3. **Chat** sekmesinden sorularını sor
+4. AI belgelere dayanarak yanıt verir
+
+## LLM Ordusu Durumu
+
+| Bileşen | Durum | Port |
+|---------|-------|------|
+| Ollama | ✅ Aktif | 11434 |
+| Open WebUI | ✅ Aktif | 8444 |
+| RAGFlow | 🔄 Kurulum | 8088 |
+| phi3:mini | ✅ Hazır | - |
+| llama2 | ✅ Hazır | - |
+
+## Sorun Giderme
+
+### RAGFlow başlamıyorsa:
+```bash
+cd /DATA/ragflow/docker
+docker compose logs -f
+```
+
+### Elasticsearch hatası:
+```bash
+sysctl -w vm.max_map_count=262144
+docker compose restart
+```
+
+### Ollama bağlantı sorunu:
+- RAGFlow içinde Ollama URL'yi kontrol et
+- `host.docker.internal:11434` kullan
+- Firewall portlarını kontrol et
