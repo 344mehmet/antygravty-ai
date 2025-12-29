@@ -368,7 +368,57 @@ input int      InpNews_Impact      = 2;            // Min Impact (1-3)
 input int      InpNews_Before      = 60;           // Önce (dakika)
 input int      InpNews_After       = 30;           // Sonra (dakika)
 
-CTrade         trade;
+input group "=== TRIX ==="
+input bool     InpUseTRIX          = true;         // TRIX Kullan
+input int      InpTRIX_Period      = 18;           // TRIX Periyodu
+input int      InpTRIX_Signal      = 9;            // Signal Periyodu
+
+input group "=== DPO (Detrended Price) ==="
+input bool     InpUseDPO           = true;         // DPO Kullan
+input int      InpDPO_Period       = 20;           // DPO Periyodu
+
+input group "=== KST (Know Sure Thing) ==="
+input bool     InpUseKST           = true;         // KST Kullan
+input int      InpKST_ROC1         = 10;           // ROC 1
+input int      InpKST_ROC2         = 15;           // ROC 2
+input int      InpKST_ROC3         = 20;           // ROC 3
+input int      InpKST_ROC4         = 30;           // ROC 4
+
+input group "=== COPPOCK CURVE ==="
+input bool     InpUseCoppock       = false;        // Coppock Kullan
+input int      InpCopp_WMA         = 10;           // WMA Periyodu
+input int      InpCopp_Long        = 14;           // Long ROC
+input int      InpCopp_Short       = 11;           // Short ROC
+
+input group "=== MASS INDEX ==="
+input bool     InpUseMass          = true;         // Mass Index Kullan
+input int      InpMass_Period      = 25;           // Periyot
+input double   InpMass_Bulge       = 27.0;         // Bulge Seviyesi
+
+input group "=== VORTEX INDICATOR ==="
+input bool     InpUseVortex        = true;         // Vortex Kullan
+input int      InpVortex_Period    = 14;           // Periyot
+
+input group "=== ULTIMATE OSCILLATOR ==="
+input bool     InpUseUltimate      = true;         // Ultimate Kullan
+input int      InpUlt_Period1      = 7;            // Periyot 1
+input int      InpUlt_Period2      = 14;           // Periyot 2
+input int      InpUlt_Period3      = 28;           // Periyot 3
+
+input group "=== ACCUMULATION/DISTRIBUTION ==="
+input bool     InpUseAD            = true;         // A/D Kullan
+input int      InpAD_MA            = 20;           // A/D MA Periyodu
+
+input group "=== RANDOM FOREST SCORE ==="
+input bool     InpUseRF            = false;        // Random Forest Kullan
+input int      InpRF_Trees         = 5;            // Ağaç Sayısı
+input double   InpRF_MinScore      = 0.6;          // Min Score
+
+input group "=== MONTE CARLO RISK ==="
+input bool     InpUseMonteCarlo    = false;        // Monte Carlo Kullan
+input int      InpMC_Simulations   = 100;          // Simülasyon Sayısı
+input double   InpMC_Confidence    = 95.0;         // Güven Aralığı (%)
+
 CPositionInfo  posInfo;
 COrderInfo     orderInfo;
 
@@ -470,6 +520,22 @@ double chandelierLong = 0, chandelierShort = 0;
 double hullMA = 0, hullMAPrev = 0;
 bool squeezeOn = false;
 double rangeFilter = 0, rangeFilterPrev = 0;
+
+// NEW v7 HANDLES
+int handleTRIX;
+int handleAD;
+
+// NEW v7 VALUES
+double trixValue[], trixSignal[];
+double dpoValue = 0;
+double kstValue = 0, kstSignal = 0;
+double coppockValue = 0;
+double massIndex = 0;
+double viPlus[], viMinus[];
+double ultimateOsc = 0;
+double adValue[], adMA[];
+double rfScore = 0;
+double mcVaR = 0, mcExpectedReturn = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -4063,6 +4129,400 @@ bool ApplyV6Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckNewsAPIFilter())
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v7 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| TRIX Filter                                                      |
+//+------------------------------------------------------------------+
+bool CheckTRIXFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTRIX)
+        return true;
+    
+    if(CopyBuffer(handleTRIX, 0, 0, 3, trixValue) < 3) return true;
+    if(CopyBuffer(handleTRIX, 1, 0, 3, trixSignal) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(trixValue[0] < trixSignal[0])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(trixValue[0] > trixSignal[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| DPO (Detrended Price Oscillator) Filter                          |
+//+------------------------------------------------------------------+
+bool CheckDPOFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDPO)
+        return true;
+    
+    // Calculate DPO
+    double sma = 0;
+    for(int i = 0; i < InpDPO_Period; i++)
+        sma += iClose(_Symbol, PERIOD_CURRENT, i);
+    sma /= InpDPO_Period;
+    
+    int shift = InpDPO_Period / 2 + 1;
+    dpoValue = iClose(_Symbol, PERIOD_CURRENT, 0) - sma;
+    
+    if(signal == SIGNAL_BUY && dpoValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && dpoValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| KST (Know Sure Thing) Filter                                     |
+//+------------------------------------------------------------------+
+bool CheckKSTFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKST)
+        return true;
+    
+    // Calculate KST
+    double roc1 = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC1)) / iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC1) * 100;
+    double roc2 = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC2)) / iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC2) * 100;
+    double roc3 = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC3)) / iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC3) * 100;
+    double roc4 = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC4)) / iClose(_Symbol, PERIOD_CURRENT, InpKST_ROC4) * 100;
+    
+    kstValue = roc1 * 1 + roc2 * 2 + roc3 * 3 + roc4 * 4;
+    
+    if(signal == SIGNAL_BUY && kstValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && kstValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Coppock Curve Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckCoppockFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCoppock)
+        return true;
+    
+    // Calculate Coppock (simplified)
+    double rocLong = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpCopp_Long)) / iClose(_Symbol, PERIOD_CURRENT, InpCopp_Long) * 100;
+    double rocShort = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpCopp_Short)) / iClose(_Symbol, PERIOD_CURRENT, InpCopp_Short) * 100;
+    
+    coppockValue = rocLong + rocShort;
+    
+    // Coppock is primarily a buy signal indicator
+    if(signal == SIGNAL_BUY && coppockValue < 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Mass Index Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckMassIndexFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMass)
+        return true;
+    
+    // Calculate Mass Index
+    double emaSum = 0;
+    for(int i = 0; i < InpMass_Period; i++)
+    {
+        double range = iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+        emaSum += range;
+    }
+    massIndex = emaSum; // Simplified
+    
+    // Mass Index bulge indicates potential reversal
+    if(massIndex > InpMass_Bulge)
+        return false; // Wait for reversal confirmation
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Vortex Indicator Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckVortexFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVortex)
+        return true;
+    
+    // Calculate Vortex
+    double vmPlus = 0, vmMinus = 0, tr = 0;
+    
+    for(int i = 0; i < InpVortex_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double highPrev = iHigh(_Symbol, PERIOD_CURRENT, i + 1);
+        double lowPrev = iLow(_Symbol, PERIOD_CURRENT, i + 1);
+        double closePrev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        vmPlus += MathAbs(high - lowPrev);
+        vmMinus += MathAbs(low - highPrev);
+        tr += MathMax(high - low, MathMax(MathAbs(high - closePrev), MathAbs(low - closePrev)));
+    }
+    
+    double viPlusVal = tr > 0 ? vmPlus / tr : 0;
+    double viMinusVal = tr > 0 ? vmMinus / tr : 0;
+    
+    if(signal == SIGNAL_BUY && viPlusVal < viMinusVal)
+        return false;
+    if(signal == SIGNAL_SELL && viMinusVal < viPlusVal)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Ultimate Oscillator Filter                                       |
+//+------------------------------------------------------------------+
+bool CheckUltimateFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseUltimate)
+        return true;
+    
+    // Calculate Ultimate Oscillator
+    double bp1 = 0, tr1 = 0;
+    double bp2 = 0, tr2 = 0;
+    double bp3 = 0, tr3 = 0;
+    
+    for(int i = 0; i < InpUlt_Period1; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double closePrev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        bp1 += close - MathMin(low, closePrev);
+        tr1 += MathMax(iHigh(_Symbol, PERIOD_CURRENT, i), closePrev) - MathMin(low, closePrev);
+    }
+    
+    for(int i = 0; i < InpUlt_Period2; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double closePrev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        bp2 += close - MathMin(low, closePrev);
+        tr2 += MathMax(iHigh(_Symbol, PERIOD_CURRENT, i), closePrev) - MathMin(low, closePrev);
+    }
+    
+    for(int i = 0; i < InpUlt_Period3; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double closePrev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        bp3 += close - MathMin(low, closePrev);
+        tr3 += MathMax(iHigh(_Symbol, PERIOD_CURRENT, i), closePrev) - MathMin(low, closePrev);
+    }
+    
+    double avg1 = tr1 > 0 ? bp1 / tr1 : 0;
+    double avg2 = tr2 > 0 ? bp2 / tr2 : 0;
+    double avg3 = tr3 > 0 ? bp3 / tr3 : 0;
+    
+    ultimateOsc = 100 * (4 * avg1 + 2 * avg2 + avg3) / 7;
+    
+    if(signal == SIGNAL_BUY && ultimateOsc < 30)
+        return false;
+    if(signal == SIGNAL_SELL && ultimateOsc > 70)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Accumulation/Distribution Filter                                 |
+//+------------------------------------------------------------------+
+bool CheckADFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAD)
+        return true;
+    
+    if(CopyBuffer(handleAD, 0, 0, InpAD_MA + 1, adValue) < InpAD_MA) return true;
+    
+    // Calculate A/D MA
+    double adSum = 0;
+    for(int i = 0; i < InpAD_MA; i++)
+        adSum += adValue[i];
+    double adMAVal = adSum / InpAD_MA;
+    
+    if(signal == SIGNAL_BUY && adValue[0] < adMAVal)
+        return false;
+    if(signal == SIGNAL_SELL && adValue[0] > adMAVal)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Random Forest Score Filter                                       |
+//+------------------------------------------------------------------+
+bool CheckRandomForestFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRF)
+        return true;
+    
+    // Simulate Random Forest with multiple decision trees
+    double votes = 0;
+    
+    for(int tree = 0; tree < InpRF_Trees; tree++)
+    {
+        double treeScore = 0;
+        
+        // Each tree uses different features
+        int feature = tree % 5;
+        
+        switch(feature)
+        {
+            case 0: // MA trend
+                if(ma1[0] > ma3[0]) treeScore = 1;
+                else treeScore = -1;
+                break;
+            case 1: // RSI
+                if(ArraySize(rsi) > 0 && rsi[0] > 50) treeScore = 1;
+                else treeScore = -1;
+                break;
+            case 2: // ATR momentum
+                if(atr[0] > atr[1]) treeScore = 0.5;
+                else treeScore = -0.5;
+                break;
+            case 3: // Price momentum
+                if(iClose(_Symbol, PERIOD_CURRENT, 0) > iClose(_Symbol, PERIOD_CURRENT, 5)) treeScore = 1;
+                else treeScore = -1;
+                break;
+            case 4: // Volume
+                if(InpUseVolume && CheckVolumeFilter()) treeScore = 0.5;
+                break;
+        }
+        
+        votes += treeScore;
+    }
+    
+    rfScore = (votes / InpRF_Trees + 1) / 2; // Normalize to 0-1
+    
+    if(signal == SIGNAL_BUY && rfScore < InpRF_MinScore)
+        return false;
+    if(signal == SIGNAL_SELL && rfScore > (1 - InpRF_MinScore))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Monte Carlo Risk Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckMonteCarloFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMonteCarlo)
+        return true;
+    
+    // Simple Monte Carlo simulation
+    double returns[];
+    ArrayResize(returns, InpMC_Simulations);
+    
+    // Generate random returns based on historical volatility
+    double avgReturn = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 20)) / iClose(_Symbol, PERIOD_CURRENT, 20);
+    double volatility = atr[0] / iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    for(int i = 0; i < InpMC_Simulations; i++)
+    {
+        // Random walk simulation
+        double random = (MathRand() / 32767.0 - 0.5) * 2;
+        returns[i] = avgReturn + random * volatility;
+    }
+    
+    // Sort returns
+    ArraySort(returns);
+    
+    // Calculate VaR at confidence level
+    int varIndex = (int)((100 - InpMC_Confidence) / 100.0 * InpMC_Simulations);
+    mcVaR = returns[varIndex];
+    
+    // Calculate expected return
+    double sum = 0;
+    for(int i = 0; i < InpMC_Simulations; i++)
+        sum += returns[i];
+    mcExpectedReturn = sum / InpMC_Simulations;
+    
+    // Don't trade if expected return is negative
+    if(signal == SIGNAL_BUY && mcExpectedReturn < 0)
+        return false;
+    if(signal == SIGNAL_SELL && mcExpectedReturn > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v7 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV7Indicators()
+{
+    if(InpUseTRIX)
+        handleTRIX = iTriX(_Symbol, PERIOD_CURRENT, InpTRIX_Period, PRICE_CLOSE);
+    
+    if(InpUseAD)
+        handleAD = iAD(_Symbol, PERIOD_CURRENT, VOLUME_TICK);
+    
+    ArraySetAsSeries(trixValue, true);
+    ArraySetAsSeries(trixSignal, true);
+    ArraySetAsSeries(viPlus, true);
+    ArraySetAsSeries(viMinus, true);
+    ArraySetAsSeries(adValue, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v7 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV7Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckTRIXFilter(signal))
+        return false;
+    
+    if(!CheckDPOFilter(signal))
+        return false;
+    
+    if(!CheckKSTFilter(signal))
+        return false;
+    
+    if(!CheckCoppockFilter(signal))
+        return false;
+    
+    if(!CheckMassIndexFilter(signal))
+        return false;
+    
+    if(!CheckVortexFilter(signal))
+        return false;
+    
+    if(!CheckUltimateFilter(signal))
+        return false;
+    
+    if(!CheckADFilter(signal))
+        return false;
+    
+    if(!CheckRandomForestFilter(signal))
+        return false;
+    
+    if(!CheckMonteCarloFilter(signal))
         return false;
     
     return true;
