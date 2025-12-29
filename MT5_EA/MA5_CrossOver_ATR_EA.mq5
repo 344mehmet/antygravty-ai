@@ -218,7 +218,55 @@ input double   InpMinBalance       = 50.0;         // Min Bakiye ($)
 input double   InpMaxSpread        = 5.0;          // Max Spread (pips)
 input bool     InpCheckMargin      = true;         // Marjin Kontrolü
 
-//+------------------------------------------------------------------+
+input group "=== KELTNER CHANNEL ==="
+input bool     InpUseKeltner       = true;         // Keltner Channel Kullan
+input int      InpKeltner_Period   = 20;           // Keltner Periyodu
+input double   InpKeltner_Mult     = 1.5;          // ATR Çarpanı
+
+input group "=== DONCHIAN CHANNEL ==="
+input bool     InpUseDonchian      = true;         // Donchian Channel Kullan
+input int      InpDonchian_Period  = 20;           // Donchian Periyodu
+input bool     InpDonchian_Break   = true;         // Breakout Modu
+
+input group "=== AWESOME OSCILLATOR ==="
+input bool     InpUseAO            = true;         // AO Kullan
+input bool     InpAO_Saucer        = true;         // Saucer Pattern
+
+input group "=== MOMENTUM ==="
+input bool     InpUseMomentum      = true;         // Momentum Kullan
+input int      InpMomentum_Period  = 14;           // Momentum Periyodu
+input double   InpMomentum_Level   = 100.0;        // Nötr Seviye
+
+input group "=== FORCE INDEX ==="
+input bool     InpUseForce         = true;         // Force Index Kullan
+input int      InpForce_Period     = 13;           // Force Periyodu
+
+input group "=== OBV (On Balance Volume) ==="
+input bool     InpUseOBV           = true;         // OBV Kullan
+input int      InpOBV_MA           = 20;           // OBV MA Periyodu
+
+input group "=== DIVERGENCE DETECTOR ==="
+input bool     InpUseDivergence    = false;        // Divergence Kullan
+input int      InpDiv_Lookback     = 14;           // Bakış Periyodu
+input bool     InpDiv_RSI          = true;         // RSI Divergence
+input bool     InpDiv_MACD         = true;         // MACD Divergence
+
+input group "=== PATTERN RECOGNITION ==="
+input bool     InpUsePattern       = true;         // Pattern Kullan
+input bool     InpPattern_Engulf   = true;         // Engulfing
+input bool     InpPattern_Doji     = true;         // Doji
+input bool     InpPattern_Hammer   = true;         // Hammer/Shooting Star
+
+input group "=== AUTO LOT CALCULATOR ==="
+input bool     InpUseAutoLot       = true;         // Auto Lot Kullan
+input double   InpAutoLot_Risk     = 2.0;          // Risk Yüzdesi
+input double   InpAutoLot_Max      = 5.0;          // Max Lot
+
+input group "=== TRADE JOURNAL ==="
+input bool     InpUseJournal       = true;         // Journal Kullan
+input bool     InpJournal_File     = true;         // Dosyaya Kaydet
+input bool     InpJournal_Alert    = true;         // Trade Alert
+
 //| GLOBAL VARIABLES                                                  |
 //+------------------------------------------------------------------+
 CTrade         trade;
@@ -273,6 +321,24 @@ double cciValue[];
 double williamsValue[];
 double mfiValue[];
 double pivotP = 0, pivotR1 = 0, pivotR2 = 0, pivotS1 = 0, pivotS2 = 0;
+
+// NEW v4 HANDLES
+int handleAO;
+int handleMomentum;
+int handleForce;
+int handleOBV;
+
+// NEW v4 VALUES
+double aoValue[];
+double momentumValue[];
+double forceValue[];
+double obvValue[], obvMA[];
+double keltnerUpper[], keltnerLower[], keltnerMiddle[];
+double donchianHigh = 0, donchianLow = 0;
+
+// Trade Journal
+int journalFileHandle = INVALID_HANDLE;
+int totalJournalEntries = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -2616,6 +2682,409 @@ bool ApplyV3Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckAccountProtection())
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v4 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Keltner Channel Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckKeltnerFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKeltner)
+        return true;
+    
+    // Calculate Keltner Channel manually
+    double ema = 0;
+    for(int i = 0; i < InpKeltner_Period; i++)
+        ema += iClose(_Symbol, PERIOD_CURRENT, i);
+    ema /= InpKeltner_Period;
+    
+    double atrKelt = atr[0] * InpKeltner_Mult;
+    double upper = ema + atrKelt;
+    double lower = ema - atrKelt;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Price should not be above upper band
+        if(close > upper)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Price should not be below lower band
+        if(close < lower)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Donchian Channel Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckDonchianFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDonchian)
+        return true;
+    
+    // Calculate Donchian Channel
+    donchianHigh = 0;
+    donchianLow = 999999;
+    
+    for(int i = 1; i <= InpDonchian_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > donchianHigh) donchianHigh = high;
+        if(low < donchianLow) donchianLow = low;
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(InpDonchian_Break)
+    {
+        if(signal == SIGNAL_BUY && close < donchianHigh)
+            return false;
+        if(signal == SIGNAL_SELL && close > donchianLow)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Awesome Oscillator Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckAOFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAO)
+        return true;
+    
+    if(CopyBuffer(handleAO, 0, 0, 3, aoValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // AO should be positive or rising
+        if(aoValue[0] < 0 && aoValue[0] < aoValue[1])
+            return false;
+        
+        // Saucer pattern (green bar after two red)
+        if(InpAO_Saucer && aoValue[0] > 0)
+        {
+            if(aoValue[0] < aoValue[1]) return false;
+        }
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(aoValue[0] > 0 && aoValue[0] > aoValue[1])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Momentum Filter                                                  |
+//+------------------------------------------------------------------+
+bool CheckMomentumFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMomentum)
+        return true;
+    
+    if(CopyBuffer(handleMomentum, 0, 0, 3, momentumValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(momentumValue[0] < InpMomentum_Level)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(momentumValue[0] > InpMomentum_Level)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Force Index Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckForceFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseForce)
+        return true;
+    
+    if(CopyBuffer(handleForce, 0, 0, 3, forceValue) < 3) return true;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(forceValue[0] < 0 && forceValue[0] < forceValue[1])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(forceValue[0] > 0 && forceValue[0] > forceValue[1])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| OBV Filter                                                       |
+//+------------------------------------------------------------------+
+bool CheckOBVFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOBV)
+        return true;
+    
+    if(CopyBuffer(handleOBV, 0, 0, InpOBV_MA + 1, obvValue) < InpOBV_MA) return true;
+    
+    // Calculate OBV MA
+    double obvSum = 0;
+    for(int i = 0; i < InpOBV_MA; i++)
+        obvSum += obvValue[i];
+    double obvMAVal = obvSum / InpOBV_MA;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(obvValue[0] < obvMAVal)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(obvValue[0] > obvMAVal)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Divergence Detector                                              |
+//+------------------------------------------------------------------+
+bool CheckDivergence(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDivergence)
+        return true;
+    
+    // Simple divergence check
+    double price0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double price1 = iClose(_Symbol, PERIOD_CURRENT, InpDiv_Lookback);
+    
+    bool bullishDiv = false, bearishDiv = false;
+    
+    if(InpDiv_RSI && ArraySize(rsi) >= 3)
+    {
+        if(CopyBuffer(handleRSI, 0, InpDiv_Lookback, 1, rsi) >= 1)
+        {
+            double rsiOld = rsi[0];
+            if(CopyBuffer(handleRSI, 0, 0, 1, rsi) >= 1)
+            {
+                // Bullish divergence: price lower, RSI higher
+                if(price0 < price1 && rsi[0] > rsiOld)
+                    bullishDiv = true;
+                // Bearish divergence: price higher, RSI lower
+                if(price0 > price1 && rsi[0] < rsiOld)
+                    bearishDiv = true;
+            }
+        }
+    }
+    
+    if(signal == SIGNAL_BUY && !bullishDiv)
+        return false;
+    if(signal == SIGNAL_SELL && !bearishDiv)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Pattern Recognition                                              |
+//+------------------------------------------------------------------+
+bool CheckPatternFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePattern)
+        return true;
+    
+    double open0 = iOpen(_Symbol, PERIOD_CURRENT, 0);
+    double close0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double high0 = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double low0 = iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    double open1 = iOpen(_Symbol, PERIOD_CURRENT, 1);
+    double close1 = iClose(_Symbol, PERIOD_CURRENT, 1);
+    double high1 = iHigh(_Symbol, PERIOD_CURRENT, 1);
+    double low1 = iLow(_Symbol, PERIOD_CURRENT, 1);
+    
+    double body0 = MathAbs(close0 - open0);
+    double body1 = MathAbs(close1 - open1);
+    double range0 = high0 - low0;
+    
+    bool patternFound = false;
+    
+    // Engulfing
+    if(InpPattern_Engulf)
+    {
+        if(signal == SIGNAL_BUY)
+        {
+            if(close1 < open1 && close0 > open0 && close0 > open1 && open0 < close1)
+                patternFound = true;
+        }
+        else if(signal == SIGNAL_SELL)
+        {
+            if(close1 > open1 && close0 < open0 && close0 < open1 && open0 > close1)
+                patternFound = true;
+        }
+    }
+    
+    // Doji
+    if(InpPattern_Doji && body0 < range0 * 0.1)
+    {
+        patternFound = true;
+    }
+    
+    // Hammer / Shooting Star
+    if(InpPattern_Hammer)
+    {
+        double upperWick = signal == SIGNAL_BUY ? high0 - MathMax(open0, close0) : 0;
+        double lowerWick = signal == SIGNAL_BUY ? MathMin(open0, close0) - low0 : high0 - MathMax(open0, close0);
+        
+        if(lowerWick > body0 * 2 && signal == SIGNAL_BUY)
+            patternFound = true;
+        if(upperWick > body0 * 2 && signal == SIGNAL_SELL)
+            patternFound = true;
+    }
+    
+    return patternFound || !InpUsePattern;
+}
+
+//+------------------------------------------------------------------+
+//| Auto Lot Calculator                                              |
+//+------------------------------------------------------------------+
+double CalculateAutoLot()
+{
+    if(!InpUseAutoLot)
+        return InpMinLot;
+    
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    double riskAmount = balance * (InpAutoLot_Risk / 100.0);
+    
+    double atrValue = atr[0];
+    double slPoints = atrValue * InpATR_Multiplier;
+    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+    
+    if(tickValue == 0 || slPoints == 0)
+        return InpMinLot;
+    
+    double slInTicks = slPoints / tickSize;
+    double lot = riskAmount / (slInTicks * tickValue);
+    
+    // Normalize
+    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+    double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+    
+    lot = MathMax(minLot, MathMin(InpAutoLot_Max, lot));
+    lot = NormalizeDouble(MathFloor(lot / lotStep) * lotStep, 2);
+    
+    return lot;
+}
+
+//+------------------------------------------------------------------+
+//| Trade Journal - Log Trade                                        |
+//+------------------------------------------------------------------+
+void LogTradeToJournal(string action, double lot, double price, double sl, double tp)
+{
+    if(!InpUseJournal)
+        return;
+    
+    string entry = TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES) + " | " +
+                   action + " | " + _Symbol + " | Lot: " + DoubleToString(lot, 2) +
+                   " | Price: " + DoubleToString(price, 5) +
+                   " | SL: " + DoubleToString(sl, 5) +
+                   " | TP: " + DoubleToString(tp, 5);
+    
+    Print("📝 Journal: ", entry);
+    
+    if(InpJournal_File)
+    {
+        if(journalFileHandle == INVALID_HANDLE)
+        {
+            string filename = "TradeJournal_" + _Symbol + "_" + 
+                             TimeToString(TimeCurrent(), TIME_DATE) + ".csv";
+            journalFileHandle = FileOpen(filename, FILE_WRITE|FILE_CSV|FILE_ANSI);
+        }
+        
+        if(journalFileHandle != INVALID_HANDLE)
+        {
+            FileWrite(journalFileHandle, entry);
+            totalJournalEntries++;
+        }
+    }
+    
+    if(InpJournal_Alert)
+        Alert("Trade: ", action, " ", _Symbol, " @ ", price);
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v4 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV4Indicators()
+{
+    if(InpUseAO)
+        handleAO = iAO(_Symbol, PERIOD_CURRENT);
+    
+    if(InpUseMomentum)
+        handleMomentum = iMomentum(_Symbol, PERIOD_CURRENT, InpMomentum_Period, PRICE_CLOSE);
+    
+    if(InpUseForce)
+        handleForce = iForce(_Symbol, PERIOD_CURRENT, InpForce_Period, MODE_SMA, VOLUME_TICK);
+    
+    if(InpUseOBV)
+        handleOBV = iOBV(_Symbol, PERIOD_CURRENT, VOLUME_TICK);
+    
+    // Set arrays as series
+    ArraySetAsSeries(aoValue, true);
+    ArraySetAsSeries(momentumValue, true);
+    ArraySetAsSeries(forceValue, true);
+    ArraySetAsSeries(obvValue, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v4 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV4Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckKeltnerFilter(signal))
+        return false;
+    
+    if(!CheckDonchianFilter(signal))
+        return false;
+    
+    if(!CheckAOFilter(signal))
+        return false;
+    
+    if(!CheckMomentumFilter(signal))
+        return false;
+    
+    if(!CheckForceFilter(signal))
+        return false;
+    
+    if(!CheckOBVFilter(signal))
+        return false;
+    
+    if(!CheckPatternFilter(signal))
         return false;
     
     return true;
