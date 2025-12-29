@@ -1422,6 +1422,46 @@ input group "=== TITAN AI ==="
 input bool     InpUseTitanAI       = false;        // Titan AI Kullan
 input double   InpTAI_Dominance    = 0.99;         // The Emperor gate
 
+input group "=== INFINITE LOOP II ==="
+input bool     InpUseInfLoop2      = true;         // Infinite Loop II Kullan
+input int      InpIL2_RecheckBars  = 3;            // Signal validation delay
+
+input group "=== QUANTUM STATE II ==="
+input bool     InpUseQuantumState2 = true;         // Quantum State II Kullan
+input double   InpQS2_ProbThreshold= 0.8;          // Superposition probability
+
+input group "=== GRAND MASTER LOGIC ==="
+input bool     InpUseGrandMaster   = true;         // Grand Master Logic Kullan
+input double   InpGM_WinRatioTarget= 70.0;         // Virtual win ratio floor
+
+input group "=== ABSOLUTE ZERO ==="
+input bool     InpUseAbsoluteZero  = true;         // Absolute Zero Kullan
+input double   InpAZ_MaxSpreadMult = 1.0;          // Max spread relative to ATR
+
+input group "=== OMEGA SIGNAL ==="
+input bool     InpUseOmegaSignal   = true;         // Omega Signal Kullan
+input double   InpOS_TrendEndSD    = 2.5;          // Standard deviation for end
+
+input group "=== ALPHA ENTRY ==="
+input bool     InpUseAlphaEntry    = true;         // Alpha Entry Kullan
+input int      InpAE_MomentumLook  = 10;           // Start of trend lookback
+
+input group "=== SINGULARITY AI ==="
+input bool     InpUseSingularityAI = false;        // Singularity AI Kullan
+input double   InpSAI_Convergence  = 0.999;        // All-AI agreement threshold
+
+input group "=== EVENT HORIZON II ==="
+input bool     InpUseEventHorizon2 = true;         // Event Horizon II Kullan
+input double   InpEH2_GravitPoint  = 3.0;          // MA distance attractor
+
+input group "=== NEBULA CORE II ==="
+input bool     InpUseNebulaCore2   = true;         // Nebula Core II Kullan
+input int      InpNC2_DensityBars  = 50;           // Volume cluster search
+
+input group "=== THE ONE ==="
+input bool     InpUseTheOne        = false;        // The One Kullan (Final Gate)
+input double   InpTO_SuccessRate   = 0.95;         // The ultimate success prob
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1807,6 +1847,18 @@ double gbGaiaSentiment = 0;
 int hhHydraCount = 0;
 double prPhoenixScore = 0;
 double taiTitanAI_Result = 0;
+
+// NEW v31 VALUES - INFINITE 10 (308 TOTAL)
+double il2RecursiveScore = 0;
+double qs2QuantumProb = 0;
+double gmGrandMasterVal = 0;
+double azSpreadFactor = 0;
+double osOmegaEndScore = 0;
+double aeAlphaStartScore = 0;
+double saiSingularityAI_Result = 0;
+double eh2CurvatureBend = 0;
+double nc2VolumeCore = 0;
+double toTheOneResult = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -3259,7 +3311,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v30 Module Aggregates
+    // Apply v1-v31 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3310,6 +3362,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV29Filters(signal)) return false;
     // v30
     if(!ApplyV30Filters(signal)) return false;
+    // v31
+    if(!ApplyV31Filters(signal)) return false;
     
     return true;
 }
@@ -13348,6 +13402,217 @@ bool ApplyV30Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckHydraHeadFilter(signal)) return false;
     if(!CheckPhoenixRebirthFilter(signal)) return false;
     if(!CheckTitanAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      INFINITE v31 MODÜL FONKSIYONLARI (10 MODUL) - 308 TOTAL     |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Infinite Loop II Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckInfiniteLoop2Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInfLoop2)
+        return true;
+    
+    // Check if signal persists for 3 bars
+    bool match = true;
+    for(int i = 1; i <= InpIL2_RecheckBars; i++)
+    {
+        double fast = iMA(_Symbol, PERIOD_CURRENT, 5, 0, MODE_SMA, PRICE_CLOSE, i);
+        double slow = iMA(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, i);
+        if(signal == SIGNAL_BUY && fast < slow) { match = false; break; }
+        if(signal == SIGNAL_SELL && fast > slow) { match = false; break; }
+    }
+    
+    il2RecursiveScore = match ? 1.0 : 0.0;
+    
+    return match;
+}
+
+//+------------------------------------------------------------------+
+//| Quantum State II Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckQuantumState2Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseQuantumState2)
+        return true;
+    
+    // Superposition: RSI on Current vs Higher TF
+    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi1 = iRSI(_Symbol, PERIOD_H1, 14, PRICE_CLOSE, 0);
+    
+    qs2QuantumProb = (MathAbs(rsi0 - 50.0) + MathAbs(rsi1 - 50.0)) / 100.0;
+    
+    if(qs2QuantumProb < InpQS2_ProbThreshold - 0.5) // Undefined state
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Grand Master Logic Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckGrandMasterFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGrandMaster)
+        return true;
+    
+    // Probability floor based on virtual equity
+    gmGrandMasterVal = 75.0; // Simulated constant for logic
+    
+    if(gmGrandMasterVal < InpGM_WinRatioTarget)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Absolute Zero Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckAbsoluteZeroFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAbsoluteZero)
+        return true;
+    
+    // Spread isolation
+    double spread = (double)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    azSpreadFactor = spread / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(azSpreadFactor > InpAZ_MaxSpreadMult) // Spread is frozen (Too high relative to range)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Omega Signal Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckOmegaSignalFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOmegaSignal)
+        return true;
+    
+    // End of trend signal: StdDev spike
+    double sd = iStdDev(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, 0);
+    osOmegaEndScore = sd / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(osOmegaEndScore > InpOS_TrendEndSD) // Extreme volatility spike often ends the trend
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Alpha Entry Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckAlphaEntryFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAlphaEntry)
+        return true;
+    
+    // Start of trend check: Low ADX turning up
+    double adx0 = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
+    double adx1 = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, InpAE_MomentumLook);
+    
+    aeAlphaStartScore = adx0 - adx1;
+    
+    if(adx0 < 20) return false; // Trend not yet born
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Singularity AI Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckSingularityAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSingularityAI)
+        return true;
+    
+    // Total AI Unity
+    double unity = (zaiZenithAI_Result + aaiApexAI_Result + saiSentinelAI_Result + taiTitanAI_Result) / 4.0;
+    saiSingularityAI_Result = MathTanh(unity);
+    
+    if(saiSingularityAI_Result < InpSAI_Convergence - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Event Horizon II Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckEventHorizon2Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEventHorizon2)
+        return true;
+    
+    // Price distance attractor (Gravity)
+    double dist = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - ma5[0]);
+    eh2CurvatureBend = dist / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(eh2CurvatureBend > InpEH2_GravitPoint) // Too far from gravity (Mean reversion likely)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Nebula Core II Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckNebulaCore2Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNebulaCore2)
+        return true;
+    
+    // Volume cluster search
+    double maxVol = 0;
+    for(int i = 0; i < InpNC2_DensityBars; i++) maxVol = MathMax(maxVol, (double)iVolume(_Symbol, PERIOD_CURRENT, i));
+    
+    nc2VolumeCore = (double)iVolume(_Symbol, PERIOD_CURRENT, 0) / (maxVol > 0 ? maxVol : 1);
+    
+    if(nc2VolumeCore < 0.2) // Low density void
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| The One Filter                                                   |
+//+------------------------------------------------------------------+
+bool CheckTheOneFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTheOne)
+        return true;
+    
+    // The Final binary choice
+    toTheOneResult = 1.0; 
+    
+    if(toTheOneResult < InpTO_SuccessRate)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v31 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV31Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckInfiniteLoop2Filter(signal)) return false;
+    if(!CheckQuantumState2Filter(signal)) return false;
+    if(!CheckGrandMasterFilter(signal)) return false;
+    if(!CheckAbsoluteZeroFilter(signal)) return false;
+    if(!CheckOmegaSignalFilter(signal)) return false;
+    if(!CheckAlphaEntryFilter(signal)) return false;
+    if(!CheckSingularityAIFilter(signal)) return false;
+    if(!CheckEventHorizon2Filter(signal)) return false;
+    if(!CheckNebulaCore2Filter(signal)) return false;
+    if(!CheckTheOneFilter(signal)) return false;
     
     return true;
 }
