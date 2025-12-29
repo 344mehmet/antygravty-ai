@@ -267,7 +267,56 @@ input bool     InpUseJournal       = true;         // Journal Kullan
 input bool     InpJournal_File     = true;         // Dosyaya Kaydet
 input bool     InpJournal_Alert    = true;         // Trade Alert
 
-//| GLOBAL VARIABLES                                                  |
+input group "=== HEIKIN ASHI ==="
+input bool     InpUseHeikin        = true;         // Heikin Ashi Kullan
+input int      InpHeikin_Confirm   = 2;            // Onay Bar Sayısı
+
+input group "=== RENKO FILTER ==="
+input bool     InpUseRenko         = false;        // Renko Kullan
+input int      InpRenko_BoxSize    = 10;           // Box Size (pips)
+input int      InpRenko_Confirm    = 3;            // Onay Box Sayısı
+
+input group "=== ZIGZAG ==="
+input bool     InpUseZigZag        = true;         // ZigZag Kullan
+input int      InpZZ_Depth         = 12;           // ZigZag Depth
+input int      InpZZ_Deviation     = 5;            // ZigZag Deviation
+input int      InpZZ_Backstep      = 3;            // ZigZag Backstep
+
+input group "=== FRACTAL ==="
+input bool     InpUseFractal       = true;         // Fractal Kullan
+input int      InpFractal_Bars     = 3;            // Fractal Bar Sayısı
+
+input group "=== ALLIGATOR ==="
+input bool     InpUseAlligator     = true;         // Alligator Kullan
+input int      InpAlli_Jaw         = 13;           // Jaw Periyodu
+input int      InpAlli_Teeth       = 8;            // Teeth Periyodu
+input int      InpAlli_Lips        = 5;            // Lips Periyodu
+
+input group "=== GATOR OSCILLATOR ==="
+input bool     InpUseGator         = false;        // Gator Kullan
+input bool     InpGator_Awake      = true;         // Sadece Uyanık
+
+input group "=== MARKET PROFILE ==="
+input bool     InpUseProfile       = false;        // Market Profile Kullan
+input int      InpProfile_Period   = 24;           // Bakış Periyodu (bar)
+input double   InpProfile_VAPerc   = 70.0;         // Value Area (%)
+
+input group "=== CORRELATION FILTER ==="
+input bool     InpUseCorrelation   = false;        // Korelasyon Kullan
+input string   InpCorr_Symbol      = "EURUSD";     // Korelasyon Sembolü
+input int      InpCorr_Period      = 20;           // Korelasyon Periyodu
+input double   InpCorr_Threshold   = 0.7;          // Min Korelasyon
+
+input group "=== SEASONAL FILTER ==="
+input bool     InpUseSeasonal      = false;        // Seasonal Kullan
+input bool     InpSeasonal_Month   = true;         // Ay Bazlı
+input string   InpSeasonal_Good    = "3,4,10,11";  // İyi Aylar
+
+input group "=== ML SCORE ==="
+input bool     InpUseML            = false;        // ML Score Kullan
+input double   InpML_MinScore      = 0.6;          // Min Score (0-1)
+input int      InpML_Features      = 10;           // Feature Sayısı
+
 //+------------------------------------------------------------------+
 CTrade         trade;
 CPositionInfo  posInfo;
@@ -339,6 +388,21 @@ double donchianHigh = 0, donchianLow = 0;
 // Trade Journal
 int journalFileHandle = INVALID_HANDLE;
 int totalJournalEntries = 0;
+
+// NEW v5 HANDLES
+int handleZigZag;
+int handleFractal;
+int handleAlligator;
+int handleGator;
+
+// NEW v5 VALUES
+double zigzagValue[];
+double fractalUp[], fractalDown[];
+double alliJaw[], alliTeeth[], alliLips[];
+double gatorUp[], gatorDown[];
+double heikinOpen[], heikinClose[], heikinHigh[], heikinLow[];
+double mlScore = 0;
+double profilePOC = 0, profileVAH = 0, profileVAL = 0;
 
 // Statistics
 double dailyProfit = 0;
@@ -3085,6 +3149,431 @@ bool ApplyV4Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckPatternFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v5 MODÜL FONKSIYONLARI (10 MODUL)              |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Heikin Ashi Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckHeikinAshiFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHeikin)
+        return true;
+    
+    // Calculate Heikin Ashi candles
+    double haClose[5], haOpen[5];
+    
+    for(int i = 0; i < 5; i++)
+    {
+        double open = iOpen(_Symbol, PERIOD_CURRENT, i);
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        
+        haClose[i] = (open + high + low + close) / 4.0;
+        
+        if(i == 0)
+            haOpen[i] = (open + close) / 2.0;
+        else
+            haOpen[i] = (haOpen[i-1] + haClose[i-1]) / 2.0;
+    }
+    
+    // Check for confirmation candles
+    int bullishCount = 0, bearishCount = 0;
+    
+    for(int i = 0; i < InpHeikin_Confirm; i++)
+    {
+        if(haClose[i] > haOpen[i]) bullishCount++;
+        if(haClose[i] < haOpen[i]) bearishCount++;
+    }
+    
+    if(signal == SIGNAL_BUY && bullishCount < InpHeikin_Confirm)
+        return false;
+    if(signal == SIGNAL_SELL && bearishCount < InpHeikin_Confirm)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ZigZag Filter                                                    |
+//+------------------------------------------------------------------+
+bool CheckZigZagFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseZigZag)
+        return true;
+    
+    if(CopyBuffer(handleZigZag, 0, 0, 100, zigzagValue) < 50) return true;
+    
+    double lastSwing = 0, prevSwing = 0;
+    int swingCount = 0;
+    
+    for(int i = 0; i < 100 && swingCount < 2; i++)
+    {
+        if(zigzagValue[i] != 0)
+        {
+            if(swingCount == 0)
+                lastSwing = zigzagValue[i];
+            else
+                prevSwing = zigzagValue[i];
+            swingCount++;
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Last swing should be low (buying at bottom)
+        if(lastSwing > prevSwing)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Last swing should be high
+        if(lastSwing < prevSwing)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Fractal Filter                                                   |
+//+------------------------------------------------------------------+
+bool CheckFractalFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFractal)
+        return true;
+    
+    if(CopyBuffer(handleFractal, 0, 0, 20, fractalUp) < 10) return true;
+    if(CopyBuffer(handleFractal, 1, 0, 20, fractalDown) < 10) return true;
+    
+    double lastFractalUp = 0, lastFractalDown = 0;
+    
+    for(int i = 0; i < 20; i++)
+    {
+        if(fractalUp[i] != EMPTY_VALUE && lastFractalUp == 0)
+            lastFractalUp = fractalUp[i];
+        if(fractalDown[i] != EMPTY_VALUE && lastFractalDown == 0)
+            lastFractalDown = fractalDown[i];
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY)
+    {
+        if(lastFractalDown > 0 && close < lastFractalDown)
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        if(lastFractalUp > 0 && close > lastFractalUp)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Alligator Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckAlligatorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAlligator)
+        return true;
+    
+    if(CopyBuffer(handleAlligator, 0, 0, 5, alliJaw) < 3) return true;
+    if(CopyBuffer(handleAlligator, 1, 0, 5, alliTeeth) < 3) return true;
+    if(CopyBuffer(handleAlligator, 2, 0, 5, alliLips) < 3) return true;
+    
+    // Check alligator is awake (lines separating)
+    bool awake = MathAbs(alliJaw[0] - alliTeeth[0]) > atr[0] * 0.2;
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // Bullish: Lips > Teeth > Jaw
+        if(alliLips[0] < alliTeeth[0] || alliTeeth[0] < alliJaw[0])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // Bearish: Lips < Teeth < Jaw
+        if(alliLips[0] > alliTeeth[0] || alliTeeth[0] > alliJaw[0])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Gator Oscillator Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckGatorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGator)
+        return true;
+    
+    if(CopyBuffer(handleGator, 0, 0, 5, gatorUp) < 3) return true;
+    if(CopyBuffer(handleGator, 1, 0, 5, gatorDown) < 3) return true;
+    
+    // Check if Gator is awake
+    if(InpGator_Awake)
+    {
+        bool awake = (gatorUp[0] > gatorUp[1]) || (MathAbs(gatorDown[0]) > MathAbs(gatorDown[1]));
+        if(!awake)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Market Profile Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckProfileFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseProfile)
+        return true;
+    
+    // Calculate simple POC (Point of Control)
+    double prices[];
+    int priceCount[];
+    ArrayResize(prices, InpProfile_Period);
+    ArrayResize(priceCount, InpProfile_Period);
+    
+    for(int i = 0; i < InpProfile_Period; i++)
+    {
+        prices[i] = iClose(_Symbol, PERIOD_CURRENT, i);
+        priceCount[i] = 1;
+    }
+    
+    // Find POC (most traded price)
+    double poc = prices[0];
+    int maxCount = 0;
+    
+    for(int i = 0; i < InpProfile_Period; i++)
+    {
+        int count = 0;
+        for(int j = 0; j < InpProfile_Period; j++)
+        {
+            if(MathAbs(prices[i] - prices[j]) < atr[0] * 0.1)
+                count++;
+        }
+        if(count > maxCount)
+        {
+            maxCount = count;
+            poc = prices[i];
+        }
+    }
+    
+    profilePOC = poc;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > poc + atr[0])
+        return false;
+    if(signal == SIGNAL_SELL && close < poc - atr[0])
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Correlation Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckCorrelationFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCorrelation)
+        return true;
+    
+    double prices1[], prices2[];
+    ArrayResize(prices1, InpCorr_Period);
+    ArrayResize(prices2, InpCorr_Period);
+    
+    for(int i = 0; i < InpCorr_Period; i++)
+    {
+        prices1[i] = iClose(_Symbol, PERIOD_CURRENT, i);
+        prices2[i] = iClose(InpCorr_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    // Calculate correlation
+    double sum1 = 0, sum2 = 0, sum12 = 0, sum11 = 0, sum22 = 0;
+    
+    for(int i = 0; i < InpCorr_Period; i++)
+    {
+        sum1 += prices1[i];
+        sum2 += prices2[i];
+        sum12 += prices1[i] * prices2[i];
+        sum11 += prices1[i] * prices1[i];
+        sum22 += prices2[i] * prices2[i];
+    }
+    
+    double n = InpCorr_Period;
+    double numerator = n * sum12 - sum1 * sum2;
+    double denominator = MathSqrt((n * sum11 - sum1 * sum1) * (n * sum22 - sum2 * sum2));
+    
+    double correlation = denominator != 0 ? numerator / denominator : 0;
+    
+    // If highly correlated, check if correlated symbol agrees
+    if(MathAbs(correlation) >= InpCorr_Threshold)
+    {
+        double corrChange = prices2[0] - prices2[1];
+        if(signal == SIGNAL_BUY && correlation > 0 && corrChange < 0)
+            return false;
+        if(signal == SIGNAL_SELL && correlation > 0 && corrChange > 0)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Seasonal Filter                                                  |
+//+------------------------------------------------------------------+
+bool CheckSeasonalFilter()
+{
+    if(!InpUseSeasonal)
+        return true;
+    
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    
+    if(InpSeasonal_Month)
+    {
+        int currentMonth = dt.mon;
+        
+        // Parse good months from string
+        string goodMonths = InpSeasonal_Good;
+        bool isGoodMonth = false;
+        
+        if(StringFind(goodMonths, IntegerToString(currentMonth)) >= 0)
+            isGoodMonth = true;
+        
+        if(!isGoodMonth)
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ML Score Filter (Simple implementation)                          |
+//+------------------------------------------------------------------+
+bool CheckMLFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseML)
+        return true;
+    
+    // Simple ML-like scoring based on multiple features
+    double score = 0.5;
+    int features = 0;
+    
+    // Feature 1: MA alignment
+    if(ma1[0] > ma2[0] && ma2[0] > ma3[0])
+        score += 0.1;
+    else if(ma1[0] < ma2[0] && ma2[0] < ma3[0])
+        score -= 0.1;
+    features++;
+    
+    // Feature 2: RSI position
+    if(ArraySize(rsi) > 0)
+    {
+        if(rsi[0] > 50 && rsi[0] < 70) score += 0.05;
+        else if(rsi[0] < 50 && rsi[0] > 30) score -= 0.05;
+        features++;
+    }
+    
+    // Feature 3: ATR condition
+    double avgATR = 0;
+    for(int i = 0; i < 10; i++) avgATR += atr[i];
+    avgATR /= 10;
+    if(atr[0] > avgATR) score += 0.05;
+    features++;
+    
+    // Feature 4: Price momentum
+    double priceChange = iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 5);
+    if(priceChange > 0) score += 0.1;
+    else score -= 0.1;
+    features++;
+    
+    // Feature 5: Volume
+    if(InpUseVolume && CheckVolumeFilter())
+        score += 0.05;
+    features++;
+    
+    mlScore = score;
+    
+    if(signal == SIGNAL_BUY && score < InpML_MinScore)
+        return false;
+    if(signal == SIGNAL_SELL && score > (1 - InpML_MinScore))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Initialize v5 Indicators                                         |
+//+------------------------------------------------------------------+
+void InitV5Indicators()
+{
+    if(InpUseZigZag)
+        handleZigZag = iCustom(_Symbol, PERIOD_CURRENT, "Examples\\ZigZag", InpZZ_Depth, InpZZ_Deviation, InpZZ_Backstep);
+    
+    if(InpUseFractal)
+        handleFractal = iFractals(_Symbol, PERIOD_CURRENT);
+    
+    if(InpUseAlligator)
+        handleAlligator = iAlligator(_Symbol, PERIOD_CURRENT, InpAlli_Jaw, 8, InpAlli_Teeth, 5, InpAlli_Lips, 3, MODE_SMMA, PRICE_MEDIAN);
+    
+    if(InpUseGator)
+        handleGator = iGator(_Symbol, PERIOD_CURRENT, InpAlli_Jaw, 8, InpAlli_Teeth, 5, InpAlli_Lips, 3, MODE_SMMA, PRICE_MEDIAN);
+    
+    ArraySetAsSeries(zigzagValue, true);
+    ArraySetAsSeries(fractalUp, true);
+    ArraySetAsSeries(fractalDown, true);
+    ArraySetAsSeries(alliJaw, true);
+    ArraySetAsSeries(alliTeeth, true);
+    ArraySetAsSeries(alliLips, true);
+    ArraySetAsSeries(gatorUp, true);
+    ArraySetAsSeries(gatorDown, true);
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v5 Filters                                             |
+//+------------------------------------------------------------------+
+bool ApplyV5Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckHeikinAshiFilter(signal))
+        return false;
+    
+    if(!CheckZigZagFilter(signal))
+        return false;
+    
+    if(!CheckFractalFilter(signal))
+        return false;
+    
+    if(!CheckAlligatorFilter(signal))
+        return false;
+    
+    if(!CheckGatorFilter(signal))
+        return false;
+    
+    if(!CheckProfileFilter(signal))
+        return false;
+    
+    if(!CheckCorrelationFilter(signal))
+        return false;
+    
+    if(!CheckSeasonalFilter())
+        return false;
+    
+    if(!CheckMLFilter(signal))
         return false;
     
     return true;
