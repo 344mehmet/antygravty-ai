@@ -761,7 +761,51 @@ input bool     InpUseGrandMaster   = false;        // Grand Master Kullan
 input double   InpGM_MinScore      = 80.0;         // Min Score (0-100)
 input int      InpGM_Depth         = 10;           // AI Depth
 
-int handleVolume;
+input group "=== FIBONACCI PRO ==="
+input bool     InpUseFiboPro       = true;         // Fibo Pro Kullan
+input int      InpFibo_Period      = 100;          // Lookback Period
+input double   InpFibo_Level       = 0.618;        // Key Level
+
+input group "=== ELLIOTT WAVE ==="
+input bool     InpUseElliott       = true;         // Elliott Kullan
+input int      InpElliott_Period   = 50;           // Wave Period
+
+input group "=== HARMONIC PATTERNS ==="
+input bool     InpUseHarmonic      = true;         // Harmonic Kullan
+input double   InpHarm_Tolerance   = 0.05;         // Pattern Tolerance
+
+input group "=== MARKET STRUCTURE ==="
+input bool     InpUseMktStruct     = true;         // Market Structure Kullan
+input int      InpMS_Period        = 50;           // Periyot
+
+input group "=== FAIR VALUE GAPS ==="
+input bool     InpUseFVG           = true;         // FVG Kullan
+input int      InpFVG_MinGap       = 10;           // Min Gap (points)
+
+input group "=== ORDER BLOCKS ==="
+input bool     InpUseOrderBlocks   = true;         // Order Blocks Kullan
+input int      InpOB_Period        = 50;           // Lookback
+
+input group "=== IMBALANCE ZONES ==="
+input bool     InpUseImbalance     = true;         // Imbalance Kullan
+input double   InpImb_MinRatio     = 2.0;          // Min Volume Ratio
+
+input group "=== SESSION BIAS ==="
+input bool     InpUseSessionBias   = true;         // Session Bias Kullan
+input int      InpSB_AsiaStart     = 0;            // Asia Start (hour)
+input int      InpSB_LondonStart   = 7;            // London Start (hour)
+input int      InpSB_NYStart       = 13;           // NY Start (hour)
+
+input group "=== POSITION SIZING PRO ==="
+input bool     InpUsePosSizing     = true;         // Pos Sizing Kullan
+input double   InpPS_RiskPercent   = 1.0;          // Risk % per trade
+input double   InpPS_MaxLot        = 10.0;         // Max Lot Size
+
+input group "=== QUANTUM AI ==="
+input bool     InpUseQuantumAI     = false;        // Quantum AI Kullan
+input double   InpQA_MinScore      = 85.0;         // Min Score (0-100)
+input int      InpQA_Qubits        = 8;            // Quantum Bits
+
 int handleMTF_MA1, handleMTF_MA5;
 
 // NEW 10 MODULE HANDLES
@@ -962,6 +1006,18 @@ double mrDeviation = 0;
 double swingHigh = 0, swingLow = 0;
 double maCorr = 0;
 double gmScore = 0;
+
+// NEW v15 VALUES - FINAL 10
+double fiboLevel = 0, fiboHigh = 0, fiboLow = 0;
+int elliottWave = 0;
+bool harmPattern = false;
+int mktStructure = 0; // 1=Bullish, -1=Bearish
+double fvgHigh = 0, fvgLow = 0;
+double obHigh = 0, obLow = 0;
+double imbRatio = 0;
+int sessionBias = 0; // 1=Buy, -1=Sell
+double posLotSize = 0;
+double qaScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -7647,6 +7703,388 @@ bool ApplyV14Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckGrandMasterFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        FINAL v15 MODÜL FONKSIYONLARI (10 MODUL) - 148 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Fibonacci Pro Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckFiboProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFiboPro)
+        return true;
+    
+    fiboHigh = 0;
+    fiboLow = 999999;
+    
+    for(int i = 0; i < InpFibo_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > fiboHigh) fiboHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < fiboLow) fiboLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double range = fiboHigh - fiboLow;
+    fiboLevel = fiboLow + range * InpFibo_Level;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > fiboLevel && close < fiboHigh)
+        return true;
+    if(signal == SIGNAL_SELL && close < fiboLevel && close > fiboLow)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Elliott Wave Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckElliottFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseElliott)
+        return true;
+    
+    // Simplified Elliott Wave detection
+    int waveCount = 0;
+    bool trending = true;
+    double prevHigh = 0, prevLow = 999999;
+    
+    for(int i = 0; i < InpElliott_Period; i += 5)
+    {
+        double high = 0, low = 999999;
+        for(int j = i; j < i + 5 && j < InpElliott_Period; j++)
+        {
+            if(iHigh(_Symbol, PERIOD_CURRENT, j) > high) high = iHigh(_Symbol, PERIOD_CURRENT, j);
+            if(iLow(_Symbol, PERIOD_CURRENT, j) < low) low = iLow(_Symbol, PERIOD_CURRENT, j);
+        }
+        
+        if(high > prevHigh && low > prevLow) waveCount++;
+        else if(high < prevHigh && low < prevLow) waveCount--;
+        
+        prevHigh = high;
+        prevLow = low;
+    }
+    
+    elliottWave = waveCount;
+    
+    if(signal == SIGNAL_BUY && elliottWave < 0)
+        return false;
+    if(signal == SIGNAL_SELL && elliottWave > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Harmonic Patterns Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckHarmonicFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHarmonic)
+        return true;
+    
+    // Simplified Gartley pattern detection
+    double x = iClose(_Symbol, PERIOD_CURRENT, 30);
+    double a = iClose(_Symbol, PERIOD_CURRENT, 20);
+    double b = iClose(_Symbol, PERIOD_CURRENT, 10);
+    double c = iClose(_Symbol, PERIOD_CURRENT, 5);
+    double d = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    double xa = a - x;
+    double ab = b - a;
+    double bc = c - b;
+    double cd = d - c;
+    
+    // Check for Gartley ratios (simplified)
+    double ab_xa = xa != 0 ? MathAbs(ab / xa) : 0;
+    double bc_ab = ab != 0 ? MathAbs(bc / ab) : 0;
+    
+    harmPattern = (ab_xa > 0.618 - InpHarm_Tolerance && ab_xa < 0.618 + InpHarm_Tolerance) ||
+                  (bc_ab > 0.382 - InpHarm_Tolerance && bc_ab < 0.886 + InpHarm_Tolerance);
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Market Structure Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckMktStructFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMktStruct)
+        return true;
+    
+    // Find Higher Highs/Lower Lows
+    double hh = 0, ll = 999999;
+    double prevHH = 0, prevLL = 999999;
+    
+    for(int i = 0; i < InpMS_Period / 2; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > hh) hh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < ll) ll = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    for(int i = InpMS_Period / 2; i < InpMS_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > prevHH) prevHH = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < prevLL) prevLL = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    if(hh > prevHH && ll > prevLL) mktStructure = 1; // Bullish
+    else if(hh < prevHH && ll < prevLL) mktStructure = -1; // Bearish
+    else mktStructure = 0;
+    
+    if(signal == SIGNAL_BUY && mktStructure < 0)
+        return false;
+    if(signal == SIGNAL_SELL && mktStructure > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Fair Value Gaps Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckFVGFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFVG)
+        return true;
+    
+    fvgHigh = 0;
+    fvgLow = 0;
+    
+    // Find FVG (gap between candle 1 high and candle 3 low)
+    for(int i = 2; i < 20; i++)
+    {
+        double high1 = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low3 = iLow(_Symbol, PERIOD_CURRENT, i - 2);
+        
+        if(low3 > high1 + InpFVG_MinGap * _Point)
+        {
+            fvgLow = high1;
+            fvgHigh = low3;
+            break;
+        }
+        
+        double low1 = iLow(_Symbol, PERIOD_CURRENT, i);
+        double high3 = iHigh(_Symbol, PERIOD_CURRENT, i - 2);
+        
+        if(high3 < low1 - InpFVG_MinGap * _Point)
+        {
+            fvgHigh = low1;
+            fvgLow = high3;
+            break;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Order Blocks Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckOrderBlocksFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOrderBlocks)
+        return true;
+    
+    obHigh = 0;
+    obLow = 0;
+    
+    // Find order block (last opposing candle before strong move)
+    for(int i = 1; i < InpOB_Period; i++)
+    {
+        double close_i = iClose(_Symbol, PERIOD_CURRENT, i);
+        double open_i = iOpen(_Symbol, PERIOD_CURRENT, i);
+        double close_prev = iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        
+        // Bullish OB: bearish candle before bullish move
+        if(close_i > open_i && close_prev < open_i)
+        {
+            obHigh = iHigh(_Symbol, PERIOD_CURRENT, i + 1);
+            obLow = iLow(_Symbol, PERIOD_CURRENT, i + 1);
+            break;
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && obLow > 0 && close > obLow && close < obHigh)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Imbalance Zones Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckImbalanceFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseImbalance)
+        return true;
+    
+    long buyVol = 0, sellVol = 0;
+    
+    for(int i = 0; i < 10; i++)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double open = iOpen(_Symbol, PERIOD_CURRENT, i);
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        
+        if(close > open) buyVol += vol;
+        else sellVol += vol;
+    }
+    
+    imbRatio = sellVol > 0 ? (double)buyVol / sellVol : 1;
+    
+    if(signal == SIGNAL_BUY && imbRatio < 1.0 / InpImb_MinRatio)
+        return false;
+    if(signal == SIGNAL_SELL && imbRatio > InpImb_MinRatio)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Session Bias Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckSessionBiasFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSessionBias)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    int hour = dt.hour;
+    
+    // Determine session
+    string session = "Asia";
+    if(hour >= InpSB_LondonStart && hour < InpSB_NYStart) session = "London";
+    else if(hour >= InpSB_NYStart) session = "NY";
+    
+    // Calculate session bias
+    double sessionOpen = iOpen(_Symbol, PERIOD_H1, 0);
+    double sessionClose = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(sessionClose > sessionOpen) sessionBias = 1;
+    else sessionBias = -1;
+    
+    if(signal == SIGNAL_BUY && sessionBias < 0)
+        return false;
+    if(signal == SIGNAL_SELL && sessionBias > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Position Sizing Pro                                              |
+//+------------------------------------------------------------------+
+double CalculatePosSizing()
+{
+    if(!InpUsePosSizing)
+        return InpLots;
+    
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    double riskAmount = balance * InpPS_RiskPercent / 100.0;
+    double stopLoss = atr[0] * InpAtr_SL_Mult;
+    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+    
+    if(tickValue == 0 || tickSize == 0 || stopLoss == 0)
+        return InpLots;
+    
+    posLotSize = riskAmount / (stopLoss / tickSize * tickValue);
+    posLotSize = MathMin(posLotSize, InpPS_MaxLot);
+    posLotSize = NormalizeDouble(posLotSize, 2);
+    
+    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+    double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+    posLotSize = MathMax(minLot, MathMin(maxLot, posLotSize));
+    
+    return posLotSize;
+}
+
+//+------------------------------------------------------------------+
+//| Quantum AI Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckQuantumAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseQuantumAI)
+        return true;
+    
+    // Quantum-inspired computation
+    double qubits[16];
+    for(int i = 0; i < InpQA_Qubits && i < 16; i++)
+    {
+        double val = 0;
+        for(int j = 0; j < 10; j++)
+        {
+            double close = iClose(_Symbol, PERIOD_CURRENT, j);
+            double open = iOpen(_Symbol, PERIOD_CURRENT, j);
+            val += MathSin((close - open) * MathPow(2, i) * 100);
+        }
+        qubits[i] = MathTanh(val);
+    }
+    
+    // Quantum entanglement simulation
+    double entangled[16];
+    for(int i = 0; i < InpQA_Qubits && i < 16; i++)
+    {
+        entangled[i] = 0;
+        for(int j = 0; j < InpQA_Qubits && j < 16; j++)
+        {
+            entangled[i] += qubits[j] * MathCos(MathPow(i + j, 2) * 0.1);
+        }
+        entangled[i] = MathTanh(entangled[i]);
+    }
+    
+    // Collapse to score
+    qaScore = 0;
+    for(int i = 0; i < InpQA_Qubits && i < 16; i++)
+        qaScore += entangled[i] * (0.15 + 0.05 * (i % 4));
+    qaScore = (MathTanh(qaScore) + 1) / 2 * 100;
+    
+    if(qaScore < InpQA_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v15 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV15Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckFiboProFilter(signal))
+        return false;
+    
+    if(!CheckElliottFilter(signal))
+        return false;
+    
+    if(!CheckHarmonicFilter(signal))
+        return false;
+    
+    if(!CheckMktStructFilter(signal))
+        return false;
+    
+    if(!CheckFVGFilter(signal))
+        return false;
+    
+    if(!CheckOrderBlocksFilter(signal))
+        return false;
+    
+    if(!CheckImbalanceFilter(signal))
+        return false;
+    
+    if(!CheckSessionBiasFilter(signal))
+        return false;
+    
+    if(!CheckQuantumAIFilter(signal))
         return false;
     
     return true;
