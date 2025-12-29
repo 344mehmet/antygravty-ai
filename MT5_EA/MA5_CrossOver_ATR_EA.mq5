@@ -523,8 +523,52 @@ input int      InpNN_Layers        = 3;            // Hidden Layers
 input int      InpNN_Neurons       = 10;           // Neurons per Layer
 input double   InpNN_MinScore      = 0.7;          // Min Score
 
+input group "=== DEMA (Double EMA) ==="
+input bool     InpUseDEMA          = true;         // DEMA Kullan
+input int      InpDEMA_Period      = 21;           // DEMA Periyodu
 
-// MA Handles
+input group "=== TEMA (Triple EMA) ==="
+input bool     InpUseTEMA          = true;         // TEMA Kullan
+input int      InpTEMA_Period      = 21;           // TEMA Periyodu
+
+input group "=== T3 MOVING AVERAGE ==="
+input bool     InpUseT3            = true;         // T3 Kullan
+input int      InpT3_Period        = 5;            // T3 Periyodu
+input double   InpT3_VFactor       = 0.7;          // Volume Factor
+
+input group "=== FRAMA (Fractal Adaptive) ==="
+input bool     InpUseFRAMA         = true;         // FRAMA Kullan
+input int      InpFRAMA_Period     = 16;           // FRAMA Periyodu
+
+input group "=== VIDYA (Variable Index) ==="
+input bool     InpUseVIDYA         = true;         // VIDYA Kullan
+input int      InpVIDYA_CMO        = 9;            // CMO Periyodu
+input int      InpVIDYA_MA         = 12;           // MA Periyodu
+
+input group "=== ZERO LAG EMA ==="
+input bool     InpUseZeroLag       = true;         // Zero Lag Kullan
+input int      InpZL_Period        = 21;           // Periyot
+
+input group "=== SMOOTHED RSI ==="
+input bool     InpUseSmoothRSI     = true;         // Smooth RSI Kullan
+input int      InpSRSI_Period      = 14;           // RSI Periyodu
+input int      InpSRSI_Smooth      = 3;            // Smoothing
+
+input group "=== STOCHASTIC RSI ==="
+input bool     InpUseStochRSI      = true;         // StochRSI Kullan
+input int      InpStRSI_Period     = 14;           // RSI Periyodu
+input int      InpStRSI_K          = 3;            // %K
+input int      InpStRSI_D          = 3;            // %D
+
+input group "=== ADR (Average Directional Rating) ==="
+input bool     InpUseADR           = true;         // ADR Kullan
+input int      InpADR_Period       = 14;           // Periyot
+
+input group "=== TRADE OPTIMIZATION ==="
+input bool     InpUseTradeOpt      = false;        // Trade Opt Kullan
+input int      InpOpt_Lookback     = 500;          // Backtest Bars
+input double   InpOpt_MinWinRate   = 0.55;         // Min Win Rate
+
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
 int handleATR;
 
@@ -673,6 +717,18 @@ datetime lastDayCheck = 0;
 int totalTrades = 0;
 int winTrades = 0;
 int lossTrades = 0;
+
+// NEW v10 VALUES
+double demaValue = 0, demaPrev = 0;
+double temaValue = 0, temaPrev = 0;
+double t3Value = 0, t3Prev = 0;
+double framaValue = 0, framaPrev = 0;
+double vidyaValue = 0, vidyaPrev = 0;
+double zeroLagValue = 0, zeroLagPrev = 0;
+double smoothRSI = 0;
+double stochRSIK = 0, stochRSID = 0;
+double adrValue = 0;
+double optWinRate = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -5408,6 +5464,470 @@ bool ApplyV9Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckNeuralFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|              YENI v10 MODÜL FONKSIYONLARI (10 MODUL)             |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| DEMA (Double EMA) Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckDEMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDEMA)
+        return true;
+    
+    // Calculate DEMA = 2*EMA - EMA(EMA)
+    double mult = 2.0 / (InpDEMA_Period + 1);
+    double ema1 = 0, ema2 = 0;
+    
+    for(int i = InpDEMA_Period * 2; i >= 0; i--)
+    {
+        if(i == InpDEMA_Period * 2)
+            ema1 = iClose(_Symbol, PERIOD_CURRENT, i);
+        else
+            ema1 = iClose(_Symbol, PERIOD_CURRENT, i) * mult + ema1 * (1 - mult);
+    }
+    
+    for(int i = InpDEMA_Period * 2; i >= 0; i--)
+    {
+        if(i == InpDEMA_Period * 2)
+            ema2 = ema1;
+        else
+            ema2 = ema1 * mult + ema2 * (1 - mult);
+    }
+    
+    demaPrev = demaValue;
+    demaValue = 2 * ema1 - ema2;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < demaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > demaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| TEMA (Triple EMA) Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckTEMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTEMA)
+        return true;
+    
+    // Calculate TEMA = 3*EMA - 3*EMA(EMA) + EMA(EMA(EMA))
+    double mult = 2.0 / (InpTEMA_Period + 1);
+    double ema1 = 0, ema2 = 0, ema3 = 0;
+    
+    for(int i = InpTEMA_Period * 3; i >= 0; i--)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        if(i == InpTEMA_Period * 3)
+        {
+            ema1 = close;
+            ema2 = close;
+            ema3 = close;
+        }
+        else
+        {
+            ema1 = close * mult + ema1 * (1 - mult);
+            ema2 = ema1 * mult + ema2 * (1 - mult);
+            ema3 = ema2 * mult + ema3 * (1 - mult);
+        }
+    }
+    
+    temaPrev = temaValue;
+    temaValue = 3 * ema1 - 3 * ema2 + ema3;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < temaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > temaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| T3 Moving Average Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckT3Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseT3)
+        return true;
+    
+    double v = InpT3_VFactor;
+    double c1 = -v * v * v;
+    double c2 = 3 * v * v + 3 * v * v * v;
+    double c3 = -6 * v * v - 3 * v - 3 * v * v * v;
+    double c4 = 1 + 3 * v + v * v * v + 3 * v * v;
+    
+    double mult = 2.0 / (InpT3_Period + 1);
+    double e1 = 0, e2 = 0, e3 = 0, e4 = 0, e5 = 0, e6 = 0;
+    
+    for(int i = InpT3_Period * 6; i >= 0; i--)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        if(i == InpT3_Period * 6)
+        {
+            e1 = e2 = e3 = e4 = e5 = e6 = close;
+        }
+        else
+        {
+            e1 = close * mult + e1 * (1 - mult);
+            e2 = e1 * mult + e2 * (1 - mult);
+            e3 = e2 * mult + e3 * (1 - mult);
+            e4 = e3 * mult + e4 * (1 - mult);
+            e5 = e4 * mult + e5 * (1 - mult);
+            e6 = e5 * mult + e6 * (1 - mult);
+        }
+    }
+    
+    t3Prev = t3Value;
+    t3Value = c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && t3Value < t3Prev)
+        return false;
+    if(signal == SIGNAL_SELL && t3Value > t3Prev)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| FRAMA (Fractal Adaptive MA) Filter                               |
+//+------------------------------------------------------------------+
+bool CheckFRAMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFRAMA)
+        return true;
+    
+    int halfPeriod = InpFRAMA_Period / 2;
+    
+    // Calculate fractal dimension
+    double n1 = 0, n2 = 0, n3 = 0;
+    double highest1 = 0, lowest1 = 999999;
+    double highest2 = 0, lowest2 = 999999;
+    double highest3 = 0, lowest3 = 999999;
+    
+    for(int i = 0; i < halfPeriod; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highest1) highest1 = high;
+        if(low < lowest1) lowest1 = low;
+    }
+    n1 = (highest1 - lowest1) / halfPeriod;
+    
+    for(int i = halfPeriod; i < InpFRAMA_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highest2) highest2 = high;
+        if(low < lowest2) lowest2 = low;
+    }
+    n2 = (highest2 - lowest2) / halfPeriod;
+    
+    for(int i = 0; i < InpFRAMA_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        if(high > highest3) highest3 = high;
+        if(low < lowest3) lowest3 = low;
+    }
+    n3 = (highest3 - lowest3) / InpFRAMA_Period;
+    
+    double dimen = (n1 > 0 && n2 > 0 && (n1 + n2) > 0 && n3 > 0) ? 
+                   (MathLog(n1 + n2) - MathLog(n3)) / MathLog(2) : 1;
+    double alpha = MathExp(-4.6 * (dimen - 1));
+    alpha = MathMax(0.01, MathMin(1, alpha));
+    
+    framaPrev = framaValue;
+    if(framaValue == 0) framaValue = iClose(_Symbol, PERIOD_CURRENT, 0);
+    framaValue = alpha * iClose(_Symbol, PERIOD_CURRENT, 0) + (1 - alpha) * framaValue;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < framaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > framaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| VIDYA (Variable Index Dynamic Average) Filter                    |
+//+------------------------------------------------------------------+
+bool CheckVIDYAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVIDYA)
+        return true;
+    
+    // Calculate CMO for VIDYA
+    double sumUp = 0, sumDown = 0;
+    for(int i = 0; i < InpVIDYA_CMO; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        if(change > 0) sumUp += change;
+        else sumDown -= change;
+    }
+    
+    double cmo = (sumUp + sumDown) != 0 ? MathAbs(sumUp - sumDown) / (sumUp + sumDown) : 0;
+    double sc = 2.0 / (InpVIDYA_MA + 1);
+    double alpha = sc * cmo;
+    
+    vidyaPrev = vidyaValue;
+    if(vidyaValue == 0) vidyaValue = iClose(_Symbol, PERIOD_CURRENT, 0);
+    vidyaValue = alpha * iClose(_Symbol, PERIOD_CURRENT, 0) + (1 - alpha) * vidyaValue;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < vidyaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > vidyaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Zero Lag EMA Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckZeroLagFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseZeroLag)
+        return true;
+    
+    // Calculate Zero Lag EMA
+    double mult = 2.0 / (InpZL_Period + 1);
+    int lag = (InpZL_Period - 1) / 2;
+    
+    double ema = 0;
+    for(int i = InpZL_Period * 2; i >= 0; i--)
+    {
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        double closeLag = iClose(_Symbol, PERIOD_CURRENT, i + lag);
+        double src = 2 * close - closeLag;
+        
+        if(i == InpZL_Period * 2)
+            ema = src;
+        else
+            ema = src * mult + ema * (1 - mult);
+    }
+    
+    zeroLagPrev = zeroLagValue;
+    zeroLagValue = ema;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < zeroLagValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > zeroLagValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Smoothed RSI Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckSmoothRSIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSmoothRSI)
+        return true;
+    
+    // Calculate RSI values and smooth them
+    double rsiValues[];
+    ArrayResize(rsiValues, InpSRSI_Smooth);
+    
+    for(int j = 0; j < InpSRSI_Smooth; j++)
+    {
+        double gains = 0, losses = 0;
+        for(int i = j; i < InpSRSI_Period + j; i++)
+        {
+            double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+            if(change > 0) gains += change;
+            else losses -= change;
+        }
+        rsiValues[j] = losses == 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    }
+    
+    smoothRSI = 0;
+    for(int j = 0; j < InpSRSI_Smooth; j++)
+        smoothRSI += rsiValues[j];
+    smoothRSI /= InpSRSI_Smooth;
+    
+    if(signal == SIGNAL_BUY && smoothRSI > 70)
+        return false;
+    if(signal == SIGNAL_SELL && smoothRSI < 30)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Stochastic RSI Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckStochRSIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStochRSI)
+        return true;
+    
+    // Calculate RSI values
+    double rsiVals[];
+    ArrayResize(rsiVals, InpStRSI_Period);
+    
+    for(int j = 0; j < InpStRSI_Period; j++)
+    {
+        double gains = 0, losses = 0;
+        for(int i = j; i < InpStRSI_Period + j; i++)
+        {
+            double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+            if(change > 0) gains += change;
+            else losses -= change;
+        }
+        rsiVals[j] = losses == 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    }
+    
+    // Find highest/lowest RSI
+    double highestRSI = 0, lowestRSI = 100;
+    for(int j = 0; j < InpStRSI_Period; j++)
+    {
+        if(rsiVals[j] > highestRSI) highestRSI = rsiVals[j];
+        if(rsiVals[j] < lowestRSI) lowestRSI = rsiVals[j];
+    }
+    
+    stochRSIK = (highestRSI - lowestRSI) != 0 ? 
+                (rsiVals[0] - lowestRSI) / (highestRSI - lowestRSI) * 100 : 50;
+    stochRSID = stochRSIK; // Simplified
+    
+    if(signal == SIGNAL_BUY && stochRSIK > 80)
+        return false;
+    if(signal == SIGNAL_SELL && stochRSIK < 20)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ADR (Average Directional Rating) Filter                          |
+//+------------------------------------------------------------------+
+bool CheckADRFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseADR)
+        return true;
+    
+    // Calculate ADR (combined ADX metric)
+    double sumDX = 0;
+    
+    for(int i = 0; i < InpADR_Period; i++)
+    {
+        double plusDM = iHigh(_Symbol, PERIOD_CURRENT, i) - iHigh(_Symbol, PERIOD_CURRENT, i + 1);
+        double minusDM = iLow(_Symbol, PERIOD_CURRENT, i + 1) - iLow(_Symbol, PERIOD_CURRENT, i);
+        double tr = MathMax(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i),
+                   MathMax(MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1)),
+                          MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1))));
+        
+        if(plusDM < 0) plusDM = 0;
+        if(minusDM < 0) minusDM = 0;
+        
+        double plusDI = tr != 0 ? plusDM / tr * 100 : 0;
+        double minusDI = tr != 0 ? minusDM / tr * 100 : 0;
+        double diSum = plusDI + minusDI;
+        double dx = diSum != 0 ? MathAbs(plusDI - minusDI) / diSum * 100 : 0;
+        
+        sumDX += dx;
+    }
+    
+    adrValue = sumDX / InpADR_Period;
+    
+    // Only trade when ADR shows strong trend
+    if(adrValue < 25)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Trade Optimization Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckTradeOptFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTradeOpt)
+        return true;
+    
+    // Calculate recent win rate
+    int wins = 0, total = 0;
+    
+    // Simulate backtest
+    for(int i = 1; i < InpOpt_Lookback; i++)
+    {
+        double close1 = iClose(_Symbol, PERIOD_CURRENT, i);
+        double close0 = iClose(_Symbol, PERIOD_CURRENT, i - 1);
+        
+        // Simple MA crossover simulation
+        double ma1_1 = 0, ma1_2 = 0;
+        for(int j = 0; j < 20; j++)
+        {
+            ma1_1 += iClose(_Symbol, PERIOD_CURRENT, i + j);
+            ma1_2 += iClose(_Symbol, PERIOD_CURRENT, i + 1 + j);
+        }
+        ma1_1 /= 20;
+        ma1_2 /= 20;
+        
+        if(close1 > ma1_1 && close0 > close1) // Simulated buy
+        {
+            total++;
+            if(close0 > close1) wins++;
+        }
+    }
+    
+    optWinRate = total > 0 ? (double)wins / total : 0.5;
+    
+    if(optWinRate < InpOpt_MinWinRate)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v10 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV10Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckDEMAFilter(signal))
+        return false;
+    
+    if(!CheckTEMAFilter(signal))
+        return false;
+    
+    if(!CheckT3Filter(signal))
+        return false;
+    
+    if(!CheckFRAMAFilter(signal))
+        return false;
+    
+    if(!CheckVIDYAFilter(signal))
+        return false;
+    
+    if(!CheckZeroLagFilter(signal))
+        return false;
+    
+    if(!CheckSmoothRSIFilter(signal))
+        return false;
+    
+    if(!CheckStochRSIFilter(signal))
+        return false;
+    
+    if(!CheckADRFilter(signal))
+        return false;
+    
+    if(!CheckTradeOptFilter(signal))
         return false;
     
     return true;
