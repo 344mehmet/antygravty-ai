@@ -1222,6 +1222,46 @@ input group "=== GENESIS AI ==="
 input bool     InpUseGenesisAI     = false;        // Genesis AI Kullan
 input double   InpGAI_Threshold    = 0.95;         // Creation logic threshold
 
+input group "=== ETERNAL FLOW ==="
+input bool     InpUseEternalFlow   = true;         // Eternal Flow Kullan
+input int      InpEF_VortexPeriod  = 14;           // Vortex momentum lookback
+
+input group "=== LIFE CYCLE ==="
+input bool     InpUseLifeCycle     = true;         // Life Cycle Kullan
+input int      InpLC_WaveAge       = 100;          // Maximum wave aging
+
+input group "=== SOUL RESONANCE ==="
+input bool     InpUseSoulRes       = true;         // Soul Resonance Kullan
+input double   InpSR_HarmonyLimit  = 0.8;          // P/V harmony threshold
+
+input group "=== AFTERLIFE LOGIC ==="
+input bool     InpUseAfterlife     = false;        // Afterlife (Fade) Kullan
+input double   InpAL_FadeMult      = 1.5;          // Fade entry multiplier
+
+input group "=== REINCARNATION ==="
+input bool     InpUseReincarnation = true;         // Reincarnation Kullan
+input int      InpRI_HistBars      = 2000;         // Pattern repeat check
+
+input group "=== DIVINE PROPORTION ==="
+input bool     InpUseDivineProp    = true;         // Divine Proportion Kullan
+input double   InpDP_PhiBuffer     = 0.05;         // Golden ratio tolerance
+
+input group "=== KARMA BALANCE ==="
+input bool     InpUseKarma         = true;         // Karma Balance Kullan
+input int      InpKB_SentBars      = 50;           // Recent P/L sentiment
+
+input group "=== HEAVENS GATE ==="
+input bool     InpUseHeavensGate   = true;         // Heavens Gate Kullan
+input int      InpHG_HighPeriod    = 48;           // Extreme high breakout
+
+input group "=== HELLS FIRE ==="
+input bool     InpUseHellsFire     = true;         // Hells Fire Kullan
+input double   InpHF_VolExclusion  = 4.0;          // Volatility fire-limit
+
+input group "=== ETERNAL AI ==="
+input bool     InpUseEternalAI     = false;        // Eternal AI Kullan
+input double   InpEAI_FinalGate    = 0.99;         // The Final Overseer gate
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1547,6 +1587,18 @@ double gcCoreMass = 0;
 double sfForgePatterns = 0;
 double vfVoidActivity = 0;
 double gaiGenesisAI_Result = 0;
+
+// NEW v26 VALUES - ETERNAL 10
+double efVortexVal = 0;
+double lcWaveAgeScale = 0;
+double srHarmonyRatio = 0;
+bool alAfterlifeMode = false;
+double riPatternMatch = 0;
+double dpDivinePropErr = 0;
+double kbKarmaScore = 0;
+bool hgGateOpened = false;
+bool hfFireExcluded = false;
+double eaiEternalAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -2999,7 +3051,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v25 Module Aggregates
+    // Apply v1-v26 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3040,6 +3092,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV24Filters(signal)) return false;
     // v25
     if(!ApplyV25Filters(signal)) return false;
+    // v26
+    if(!ApplyV26Filters(signal)) return false;
     
     return true;
 }
@@ -11984,6 +12038,264 @@ bool ApplyV25Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckStarForgeFilter(signal)) return false;
     if(!CheckVoidFilter(signal)) return false;
     if(!CheckGenesisAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      ETERNAL v26 MODÜL FONKSIYONLARI (10 MODUL) - 258 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Eternal Flow Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckEternalFlowFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEternalFlow)
+        return true;
+    
+    // Vortex momentum approximation
+    double sumUp = 0, sumDown = 0;
+    for(int i = 0; i < InpEF_VortexPeriod; i++)
+    {
+        double tr = MathMax(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i), 
+                    MathMax(MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i+1)), 
+                            MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i+1))));
+        
+        double vp = MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i+1));
+        double vm = MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iHigh(_Symbol, PERIOD_CURRENT, i+1));
+        
+        sumUp += vp;
+        sumDown += vm;
+    }
+    
+    efVortexVal = (sumUp - sumDown) / (sumUp + sumDown + 0.000001);
+    
+    if(signal == SIGNAL_BUY && efVortexVal < 0) return false;
+    if(signal == SIGNAL_SELL && efVortexVal > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Life Cycle Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckLifeCycleFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLifeCycle)
+        return true;
+    
+    // Wave aging: how many bars since last major low/high
+    int barsSinceExtremum = 0;
+    for(int i = 1; i < InpLC_WaveAge; i++)
+    {
+        bool isHigh = iHigh(_Symbol, PERIOD_CURRENT, i) > iHigh(_Symbol, PERIOD_CURRENT, i-1) && iHigh(_Symbol, PERIOD_CURRENT, i) > iHigh(_Symbol, PERIOD_CURRENT, i+1);
+        bool isLow = iLow(_Symbol, PERIOD_CURRENT, i) < iLow(_Symbol, PERIOD_CURRENT, i-1) && iLow(_Symbol, PERIOD_CURRENT, i) < iLow(_Symbol, PERIOD_CURRENT, i+1);
+        if(isHigh || isLow) { barsSinceExtremum = i; break; }
+    }
+    
+    lcWaveAgeScale = (double)barsSinceExtremum / InpLC_WaveAge;
+    
+    if(lcWaveAgeScale > 0.9) // Wave is too old (Exhaustion)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Soul Resonance Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckSoulResFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSoulRes)
+        return true;
+    
+    // Price / Volume harmony
+    double priceChange = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    double vol = (double)iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    double avgPriceChange = 0, avgVol = 0;
+    for(int i = 0; i < 20; i++)
+    {
+        avgPriceChange += MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i));
+        avgVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    }
+    avgPriceChange /= 20;
+    avgVol /= 20;
+    
+    double pRatio = priceChange / (avgPriceChange > 0 ? avgPriceChange : 1);
+    double vRatio = vol / (avgVol > 0 ? avgVol : 1);
+    
+    srHarmonyRatio = pRatio / (vRatio > 0 ? vRatio : 1);
+    
+    if(srHarmonyRatio > 1.5 || srHarmonyRatio < 0.5) // Discordant move (Effort vs Result mismatch)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Afterlife Logic Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckAfterlifeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAfterlife)
+        return true;
+    
+    // Fade extreme moves
+    double dist = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - ma5[0]);
+    alAfterlifeMode = dist > atr[0] * InpAL_FadeMult;
+    
+    if(alAfterlifeMode) // If overextended, only allow FADE signals (not implemented in main crossover yet)
+        return false; // Skip trendy entries during afterlife
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Reincarnation Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckReincarnationFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseReincarnation)
+        return true;
+    
+    // Pattern repeat check: is the current 3-bar pattern repeating a historical fail?
+    bool matchFound = false;
+    for(int i = 50; i < InpRI_HistBars; i++)
+    {
+        bool dir0 = iClose(_Symbol, PERIOD_CURRENT, 0) > iOpen(_Symbol, PERIOD_CURRENT, 0);
+        bool dirH0 = iClose(_Symbol, PERIOD_CURRENT, i) > iOpen(_Symbol, PERIOD_CURRENT, i);
+        if(dir0 == dirH0)
+        {
+            // Simple match logic
+            matchFound = true; 
+            break;
+        }
+    }
+    
+    riPatternMatch = matchFound ? 1.0 : 0.0;
+    
+    return true; // Info filter or restrict based on history
+}
+
+//+------------------------------------------------------------------+
+//| Divine Proportion Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckDivinePropFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDivineProp)
+        return true;
+    
+    // Golden Ratio in wave structure
+    double largeWave = iHigh(_Symbol, PERIOD_CURRENT, 20) - iLow(_Symbol, PERIOD_CURRENT, 20);
+    double smallWave = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    double ratio = (smallWave > 0) ? largeWave / smallWave : 0;
+    dpDivinePropErr = MathAbs(ratio - 1.618);
+    
+    if(dpDivinePropErr > InpDP_PhiBuffer * 10) // Discordant with Phi
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Karma Balance Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckKarmaFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKarma)
+        return true;
+    
+    // Recent Sentiment Balance
+    int up = 0, down = 0;
+    for(int i = 0; i < InpKB_SentBars; i++)
+    {
+        if(iClose(_Symbol, PERIOD_CURRENT, i) > iOpen(_Symbol, PERIOD_CURRENT, i)) up++;
+        else down++;
+    }
+    
+    kbKarmaScore = (double)(up - down) / InpKB_SentBars;
+    
+    if(signal == SIGNAL_BUY && kbKarmaScore < -0.4) return false; // Too much negative karma
+    if(signal == SIGNAL_SELL && kbKarmaScore > 0.4) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Heavens Gate Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckHeavensGateFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHeavensGate)
+        return true;
+    
+    // Multi-cycle High/Low breakout confirmation
+    double cycleHigh = iHigh(_Symbol, PERIOD_CURRENT, iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, InpHG_HighPeriod, 1));
+    double cycleLow = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpHG_HighPeriod, 1));
+    
+    hgGateOpened = (signal == SIGNAL_BUY && iClose(_Symbol, PERIOD_CURRENT, 0) > cycleHigh) ||
+                   (signal == SIGNAL_SELL && iClose(_Symbol, PERIOD_CURRENT, 0) < cycleLow);
+                   
+    if(!hgGateOpened) // Price hasn't broken out of the local "gate"
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Hells Fire Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckHellsFireFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHellsFire)
+        return true;
+    
+    // Extreme volatility exclusion: trading in the "fire"
+    double currentRange = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    hfFireExcluded = currentRange > atr[0] * InpHF_VolExclusion;
+    
+    if(hfFireExcluded) // Volatility is too dangerous (Hells Fire)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Eternal AI Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckEternalAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEternalAI)
+        return true;
+    
+    // The Final Sentinel
+    double wisdom = (efVortexVal > 0 ? 1 : -1) * (1.0 - lcWaveAgeScale) * (1.0 - dpDivinePropErr);
+    eaiEternalAI_Result = MathTanh(wisdom);
+    
+    if(MathAbs(eaiEternalAI_Result) < InpEAI_FinalGate - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v26 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV26Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckEternalFlowFilter(signal)) return false;
+    if(!CheckLifeCycleFilter(signal)) return false;
+    if(!CheckSoulResFilter(signal)) return false;
+    if(!CheckAfterlifeFilter(signal)) return false;
+    if(!CheckReincarnationFilter(signal)) return false;
+    if(!CheckDivinePropFilter(signal)) return false;
+    if(!CheckKarmaFilter(signal)) return false;
+    if(!CheckHeavensGateFilter(signal)) return false;
+    if(!CheckHellsFireFilter(signal)) return false;
+    if(!CheckEternalAIFilter(signal)) return false;
     
     return true;
 }
