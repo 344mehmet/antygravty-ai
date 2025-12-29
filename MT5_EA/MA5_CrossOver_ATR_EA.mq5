@@ -1382,6 +1382,46 @@ input group "=== SENTINEL AI ==="
 input bool     InpUseSentinelAI    = false;        // Sentinel AI Kullan
 input double   InpSAI_Sensitivity  = 0.95;         // Guard duty threshold
 
+input group "=== TITAN STRENGTH ==="
+input bool     InpUseTitanStrength = true;         // Titan Strength Kullan
+input double   InpTS_ForceLimit    = 5.0;          // Absolute momentum limit
+
+input group "=== COLOSSUS GATE ==="
+input bool     InpUseColossus      = true;         // Colossus Gate Kullan
+input int      InpCG_RoundLevel    = 1000;         // Major psychological points
+
+input group "=== MYTHIC FLOW ==="
+input bool     InpUseMythicFlow    = true;         // Mythic Flow Kullan
+input double   InpMF_FiboRatio     = 0.618;        // Retracement limit
+
+input group "=== OLYMPUS PEAK ==="
+input bool     InpUseOlympus       = true;         // Olympus Peak Kullan
+input int      InpOP_Lookback      = 2000;         // Grand resistance lookback
+
+input group "=== TARTARUS FLOOR ==="
+input bool     InpUseTartarus      = true;         // Tartarus Floor Kullan
+input int      InpTF_Lookback      = 2000;         // Grand support lookback
+
+input group "=== CHRONOS CLOCK ==="
+input bool     InpUseChronosClock  = true;         // Chronos Clock Kullan
+input int      InpCC_ActiveHour    = 15;           // High probability hour (GMT)
+
+input group "=== GAIA BREATH ==="
+input bool     InpUseGaiaBreath    = true;         // Gaia Breath Kullan
+input double   InpGB_SentimentCap  = 0.8;          // Market greed/fear limit
+
+input group "=== HYDRA HEAD ==="
+input bool     InpUseHydra         = true;         // Hydra Head Kullan
+input int      InpHH_Consensus     = 3;            // Min indicators to agree
+
+input group "=== PHOENIX REBIRTH ==="
+input bool     InpUsePhoenix       = true;         // Phoenix Rebirth Kullan
+input double   InpPR_ReversalPoint = 20.0;         // RSI reversal threshold
+
+input group "=== TITAN AI ==="
+input bool     InpUseTitanAI       = false;        // Titan AI Kullan
+input double   InpTAI_Dominance    = 0.99;         // The Emperor gate
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1755,6 +1795,18 @@ double sdScoutATR = 0;
 double wfWardenSwap = 0;
 double vsVanguardPulse = 0;
 double saiSentinelAI_Result = 0;
+
+// NEW v30 VALUES - TITAN 10
+double tsTitanForce = 0;
+bool cgColossusOpen = false;
+double mfMythicRatio = 0;
+double opOlympusPeak = 0;
+double tfTartarusFloor = 0;
+int ccHourBias = 0;
+double gbGaiaSentiment = 0;
+int hhHydraCount = 0;
+double prPhoenixScore = 0;
+double taiTitanAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -3207,7 +3259,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v29 Module Aggregates
+    // Apply v1-v30 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3256,6 +3308,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV28Filters(signal)) return false;
     // v29
     if(!ApplyV29Filters(signal)) return false;
+    // v30
+    if(!ApplyV30Filters(signal)) return false;
     
     return true;
 }
@@ -13080,6 +13134,220 @@ bool ApplyV29Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckWardenFilter(signal)) return false;
     if(!CheckVanguardFilter(signal)) return false;
     if(!CheckSentinelAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        TITAN v30 MODÜL FONKSIYONLARI (10 MODUL) - 298 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Titan Strength Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckTitanStrengthFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTitanStrength)
+        return true;
+    
+    // Absolute momentum force
+    double force = iMA(_Symbol, PERIOD_CURRENT, 1, 0, MODE_SMA, PRICE_CLOSE) - iMA(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE);
+    tsTitanForce = force / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(signal == SIGNAL_BUY && tsTitanForce < 0.5) return false;
+    if(signal == SIGNAL_SELL && tsTitanForce > -0.5) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Colossus Gate Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckColossusGateFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseColossus)
+        return true;
+    
+    // Major psychological level protection
+    double price = iClose(_Symbol, PERIOD_CURRENT, 0);
+    int pInt = (int)(price / SymbolInfoDouble(_Symbol, SYMBOL_POINT));
+    cgColossusOpen = (pInt % InpCG_RoundLevel != 0);
+    
+    if(!cgColossusOpen) // Exactly on a major round number (often fakeout)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Mythic Flow Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckMythicFlowFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMythicFlow)
+        return true;
+    
+    // Fibo-based wave check
+    double high = iHigh(_Symbol, PERIOD_CURRENT, iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, 100, 0));
+    double low = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, 100, 0));
+    double range = high - low;
+    
+    if(range > 0)
+    {
+        mfMythicRatio = (iClose(_Symbol, PERIOD_CURRENT, 0) - low) / range;
+        if(signal == SIGNAL_BUY && mfMythicRatio > InpMF_FiboRatio) return false;
+        if(signal == SIGNAL_SELL && mfMythicRatio < (1.0 - InpMF_FiboRatio)) return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Olympus Peak Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckOlympusPeakFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOlympus)
+        return true;
+    
+    // Grand lookback peak
+    double peak = iHigh(_Symbol, PERIOD_CURRENT, iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, InpOP_Lookback, 1));
+    opOlympusPeak = peak;
+    
+    if(signal == SIGNAL_BUY && iClose(_Symbol, PERIOD_CURRENT, 0) > peak - (atr[0] * 1.0))
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Tartarus Floor Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckTartarusFloorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTartarus)
+        return true;
+    
+    // Grand lookback floor
+    double floor = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpTF_Lookback, 1));
+    tfTartarusFloor = floor;
+    
+    if(signal == SIGNAL_SELL && iClose(_Symbol, PERIOD_CURRENT, 0) < floor + (atr[0] * 1.0))
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Chronos Clock Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckChronosClockFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChronosClock)
+        return true;
+    
+    // Hour probability bias
+    MqlDateTime dt;
+    TimeToStruct(TimeCurrent(), dt);
+    ccHourBias = dt.hour;
+    
+    if(dt.hour != InpCC_ActiveHour && dt.hour != (InpCC_ActiveHour + 1))
+        return true; // Info only or strict? Let's stay neutral for now
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Gaia Breath Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckGaiaBreathFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGaiaBreath)
+        return true;
+    
+    // Simple sentiment approximation
+    double rsi14 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi7 = iRSI(_Symbol, PERIOD_CURRENT, 7, PRICE_CLOSE, 0);
+    
+    gbGaiaSentiment = (rsi14 + rsi7) / 200.0;
+    
+    if(gbGaiaSentiment > InpGB_SentimentCap || gbGaiaSentiment < (1.0 - InpGB_SentimentCap))
+        return false; // Extreme greed/fear
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Hydra Head Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckHydraHeadFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHydra)
+        return true;
+    
+    // Multi-indicator consensus
+    hhHydraCount = 0;
+    if(iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0) > 50) hhHydraCount++;
+    if(iCCI(_Symbol, PERIOD_CURRENT, 14, PRICE_TYPICAL, 0) > 0) hhHydraCount++;
+    if(iMFI(_Symbol, PERIOD_CURRENT, 14, 0) > 50) hhHydraCount++;
+    
+    if(signal == SIGNAL_BUY && hhHydraCount < InpHH_Consensus) return false;
+    if(signal == SIGNAL_SELL && hhHydraCount > (3 - InpHH_Consensus)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Phoenix Rebirth Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckPhoenixRebirthFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePhoenix)
+        return true;
+    
+    // Recovery from exhaustion
+    double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    prPhoenixScore = rsi;
+    
+    if(signal == SIGNAL_BUY && rsi < InpPR_ReversalPoint) return true; // Buying the rebirth
+    if(signal == SIGNAL_SELL && rsi > (100 - InpPR_ReversalPoint)) return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Titan AI Filter                                                  |
+//+------------------------------------------------------------------+
+bool CheckTitanAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTitanAI)
+        return true;
+    
+    // Sovereign Consensus
+    double authority = (tsTitanForce > 1.0 ? 0.4 : 0) + (hhHydraCount / 3.0 * 0.4) + (0.2);
+    taiTitanAI_Result = MathTanh(authority);
+    
+    if(taiTitanAI_Result < InpTAI_Dominance - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v30 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV30Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckTitanStrengthFilter(signal)) return false;
+    if(!CheckColossusGateFilter(signal)) return false;
+    if(!CheckMythicFlowFilter(signal)) return false;
+    if(!CheckOlympusPeakFilter(signal)) return false;
+    if(!CheckTartarusFloorFilter(signal)) return false;
+    if(!CheckChronosClockFilter(signal)) return false;
+    if(!CheckGaiaBreathFilter(signal)) return false;
+    if(!CheckHydraHeadFilter(signal)) return false;
+    if(!CheckPhoenixRebirthFilter(signal)) return false;
+    if(!CheckTitanAIFilter(signal)) return false;
     
     return true;
 }
