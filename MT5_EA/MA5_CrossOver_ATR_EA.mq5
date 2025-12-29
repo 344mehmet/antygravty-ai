@@ -1142,6 +1142,46 @@ input group "=== PARADOX AI ==="
 input bool     InpUseParadoxAI     = false;        // Paradox AI Kullan
 input double   InpPA_LogicThreshold= 0.75;         // Reason/Chaos ratio
 
+input group "=== INFINITE LOOP ==="
+input bool     InpUseInfLoop       = true;         // Infinite Loop Kullan
+input int      InpIL_Length        = 1000;         // Max recursion depth
+
+input group "=== MULTIVERSE PROJECTION ==="
+input bool     InpUseMultiverse    = true;         // Multiverse Kullan
+input int      InpMP_Scenarios     = 10;           // Simulation count
+
+input group "=== ZERO LAG ENGINE ==="
+input bool     InpUseZeroLag       = true;         // Zero Lag Kullan
+input int      InpZL_Period        = 20;           // Lag Compensation Period
+
+input group "=== OMEGA POINT ==="
+input bool     InpUseOmegaPoint    = true;         // Omega Point Kullan
+input double   InpOP_ForceLimit    = 0.95;         // Final convergence point
+
+input group "=== ALPHA OMEGA ==="
+input bool     InpUseAlphaOmega    = true;         // Alpha Omega Kullan
+input double   InpAO_Ratio         = 1.618;        // Fibonacci sequence link
+
+input group "=== DEEP SPACE SPREAD ==="
+input bool     InpUseDeepSpace     = true;         // Deep Space Kullan
+input int      InpDS_MaxSpread     = 50;           // Max spread (points)
+
+input group "=== EVENT HORIZON PRO ==="
+input bool     InpUseEHPro         = true;         // Event Horizon Pro Kullan
+input double   InpEHP_Curvature    = 1.5;          // Market curvature
+
+input group "=== NEBULA CORE ==="
+input bool     InpUseNebulaCore    = true;         // Nebula Core Kullan
+input int      InpNC_Density       = 50;           // Volume density lookback
+
+input group "=== COSMIC RADIATION ==="
+input bool     InpUseCosmicRad     = true;         // Cosmic Radiation Kullan
+input double   InpCR_NoiseLimit    = 0.1;          // Signal noise threshold
+
+input group "=== INFINITY AI ==="
+input bool     InpUseInfinityAI    = false;        // Infinity AI Kullan
+input double   InpIA_Confidence    = 0.999;        // Final gatekeeper threshold
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1443,6 +1483,18 @@ double ctFractalMeasure = 0;
 double miMirrorSignal = 0;
 double gwWarpIntensity = 0;
 double paParadoxAI_Result = 0;
+
+// NEW v24 VALUES - INFINITY 10
+double ilLoopDepth = 0;
+double mpDecisionScore = 0;
+double zlZeroLagVal = 0;
+double opOmegaConverge = 0;
+double aoAlphaRatio = 0;
+double dsSpreadFactor = 0;
+double ehpMarketCurvature = 0;
+double ncVolumeDensity = 0;
+double crNoiseScore = 0;
+double iaInfinityAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -2895,7 +2947,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v23 Module Aggregates
+    // Apply v1-v24 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -2932,6 +2984,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV22Filters(signal)) return false;
     // v23
     if(!ApplyV23Filters(signal)) return false;
+    // v24
+    if(!ApplyV24Filters(signal)) return false;
     
     return true;
 }
@@ -11408,3 +11462,237 @@ bool ApplyV23Filters(ENUM_SIGNAL_TYPE signal)
     return true;
 }
 //+------------------------------------------------------------------+
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      INFINITY v24 MODÜL FONKSIYONLARI (10 MODUL) - 238 TOTAL     |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Infinite Loop Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckInfiniteLoopFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInfLoop)
+        return true;
+    
+    // Simulate recursive price prediction check
+    double simPrice = iClose(_Symbol, PERIOD_CURRENT, 0);
+    int feedbackCount = 0;
+    
+    for(int i = 1; i < 50; i++)
+    {
+        double prev = iClose(_Symbol, PERIOD_CURRENT, i);
+        if(MathAbs(simPrice - prev) < SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 10)
+            feedbackCount++;
+    }
+    
+    ilLoopDepth = (double)feedbackCount / 50.0;
+    
+    if(ilLoopDepth > 0.8) // High recursion/repetition
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Multiverse Projection Filter                                     |
+//+------------------------------------------------------------------+
+bool CheckMultiverseFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMultiverse)
+        return true;
+    
+    // Monte Carlo simulation with 10 scenarios
+    int buySuccess = 0, sellSuccess = 0;
+    MathSrand((uint)TimeCurrent());
+    
+    for(int i = 0; i < InpMP_Scenarios; i++)
+    {
+        double drift = (MathRand() % 100 - 50) * 0.0001;
+        if(drift > 0) buySuccess++;
+        else sellSuccess++;
+    }
+    
+    mpDecisionScore = (double)buySuccess / InpMP_Scenarios;
+    
+    if(signal == SIGNAL_BUY && mpDecisionScore < 0.6) return false;
+    if(signal == SIGNAL_SELL && mpDecisionScore > 0.4) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Zero Lag Engine Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckZeroLagFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseZeroLag)
+        return true;
+    
+    // Zero Lag EMA logic
+    double ema = iMA(_Symbol, PERIOD_CURRENT, InpZL_Period, 0, MODE_EMA, PRICE_CLOSE);
+    double lagComp = iClose(_Symbol, PERIOD_CURRENT, 0) + (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpZL_Period));
+    
+    zlZeroLagVal = lagComp - ema;
+    
+    if(signal == SIGNAL_BUY && zlZeroLagVal < 0) return false;
+    if(signal == SIGNAL_SELL && zlZeroLagVal > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Omega Point Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckOmegaPointFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOmegaPoint)
+        return true;
+    
+    // Convergence of Volume and Price Velocity
+    double velocity = (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 5)) / 5.0;
+    long volVelocity = (iVolume(_Symbol, PERIOD_CURRENT, 0) - iVolume(_Symbol, PERIOD_CURRENT, 5)) / 5;
+    
+    opOmegaConverge = MathTanh(velocity * volVelocity);
+    
+    if(MathAbs(opOmegaConverge) > InpOP_ForceLimit) // Overextended exhaustion
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Alpha Omega Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckAlphaOmegaFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseAlphaOmega)
+        return true;
+    
+    // Golden Ratio link check
+    double range = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    double body = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    
+    aoAlphaRatio = (body > 0) ? range / body : 1;
+    
+    if(MathAbs(aoAlphaRatio - InpAO_Ratio) > 0.5) // Irregular fractal shape
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Deep Space Spread Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckDeepSpaceFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDeepSpace)
+        return true;
+    
+    int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+    dsSpreadFactor = (double)spread;
+    
+    if(spread > InpDS_MaxSpread) // Spread is too wide for safe entry
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Event Horizon Pro Filter                                         |
+//+------------------------------------------------------------------+
+bool CheckEHProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEHPro)
+        return true;
+    
+    // Curvature logic: derivative of velocity
+    double v0 = iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 1);
+    double v1 = iClose(_Symbol, PERIOD_CURRENT, 1) - iClose(_Symbol, PERIOD_CURRENT, 2);
+    
+    ehpMarketCurvature = v0 - v1;
+    
+    if(MathAbs(ehpMarketCurvature) > atr[0] * InpEHP_Curvature) // Too much bending
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Nebula Core Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckNebulaCoreFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNebulaCore)
+        return true;
+    
+    // Density of volume in a window
+    double totalVol = 0;
+    for(int i = 0; i < InpNC_Density; i++) totalVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    
+    ncVolumeDensity = (double)iVolume(_Symbol, PERIOD_CURRENT, 0) / (totalVol / InpNC_Density);
+    
+    if(ncVolumeDensity < 0.5) // Weak participation
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Cosmic Radiation Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckCosmicRadFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCosmicRad)
+        return true;
+    
+    // Stochastic Noise Filtering
+    double noise = 0;
+    for(int i = 0; i < 10; i++) noise += (iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i)) - MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i));
+    
+    crNoiseScore = noise / (atr[0] * 10 > 0 ? atr[0] * 10 : 1);
+    
+    if(crNoiseScore > InpCR_NoiseLimit) // Too much background noise
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Infinity AI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckInfinityAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInfinityAI)
+        return true;
+    
+    // Master Sentinel Logic
+    double combined = (zlZeroLagVal > 0 ? 1 : -1) * (1.1 - crNoiseScore) * (ncVolumeDensity);
+    iaInfinityAI_Result = MathTanh(combined);
+    
+    if(MathAbs(iaInfinityAI_Result) < InpIA_Confidence - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v24 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV24Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckInfiniteLoopFilter(signal)) return false;
+    if(!CheckMultiverseFilter(signal)) return false;
+    if(!CheckZeroLagFilter(signal)) return false;
+    if(!CheckOmegaPointFilter(signal)) return false;
+    if(!CheckAlphaOmegaFilter(signal)) return false;
+    if(!CheckDeepSpaceFilter(signal)) return false;
+    if(!CheckEHProFilter(signal)) return false;
+    if(!CheckNebulaCoreFilter(signal)) return false;
+    if(!CheckCosmicRadFilter(signal)) return false;
+    if(!CheckInfinityAIFilter(signal)) return false;
+    
+    return true;
+}
