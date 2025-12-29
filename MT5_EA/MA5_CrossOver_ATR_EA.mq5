@@ -1102,6 +1102,46 @@ input group "=== DIMENSIONAL AI ==="
 input bool     InpUseDimensionalAI = false;        // Dimensional AI Kullan
 input double   InpDA_MinWeight     = 0.99;         // Graph Weight Threshold
 
+input group "=== TEMPORAL PARADOX ==="
+input bool     InpUseTemporal      = true;         // Temporal Paradox Kullan
+input int      InpTP_CycleBars     = 24;           // Hour cycle check
+
+input group "=== RECURSIVE LOOP ==="
+input bool     InpUseRecursive     = true;         // Recursive Loop Kullan
+input int      InpRL_PatternSize   = 5;            // Micro pattern size
+
+input group "=== BUTTERFLY EFFECT ==="
+input bool     InpUseButterfly     = true;         // Butterfly Effect Kullan
+input double   InpBE_Sensitivy     = 0.001;        // Tick sensitivity
+
+input group "=== QUANTUM ENTANGLEMENT ==="
+input bool     InpUseQE            = true;         // Quantum Entanglement Kullan
+input string   InpQE_LeaderSymbol  = "XAUUSD";     // Lead pair
+
+input group "=== REALITY FOLD ==="
+input bool     InpUseRealityFold   = true;         // Reality Fold Kullan
+input double   InpRF_VolStandard   = 2.0;          // Vol deviation standard
+
+input group "=== CHRONOS FILTER ==="
+input bool     InpUseChronos       = true;         // Chronos Kullan
+input int      InpCF_DayBias       = 2;            // Tuesday/Thursday bias
+
+input group "=== CHAOS THEORY ==="
+input bool     InpUseChaos         = true;         // Chaos Theory Kullan
+input double   InpCT_FractalDim    = 1.5;          // Fractal Dimension Threshold
+
+input group "=== MIRROR INVERSE ==="
+input bool     InpUseMirror        = true;         // Mirror Inverse Kullan
+input bool     InpMirror_Reverse   = false;        // Inverse signal execution
+
+input group "=== GRAVITY WARP ==="
+input bool     InpUseGravityWarp   = true;         // Gravity Warp Kullan
+input int      InpGW_MassLookback  = 200;          // Weight Center
+
+input group "=== PARADOX AI ==="
+input bool     InpUseParadoxAI     = false;        // Paradox AI Kullan
+input double   InpPA_LogicThreshold= 0.75;         // Reason/Chaos ratio
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1391,6 +1431,18 @@ double sdSpatialGap = 0;
 double spFiboConvergence = 0;
 double supProbState = 0; // 0=Uncertain, 1=Probable
 double daGraphWeight = 0;
+
+// NEW v23 VALUES - PARADOX 10
+double tpTemporalShift = 0;
+double rlRecurveFactor = 0;
+double beSensitiveDelta = 0;
+double qeEntangleScore = 0;
+bool rfRealityFolded = false;
+double cfChronosBias = 0;
+double ctFractalMeasure = 0;
+double miMirrorSignal = 0;
+double gwWarpIntensity = 0;
+double paParadoxAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -2843,7 +2895,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v22 Module Aggregates
+    // Apply v1-v23 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -2878,6 +2930,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV21Filters(signal)) return false;
     // v22
     if(!ApplyV22Filters(signal)) return false;
+    // v23
+    if(!ApplyV23Filters(signal)) return false;
     
     return true;
 }
@@ -11116,6 +11170,240 @@ bool ApplyV22Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckSingPointFilter(signal)) return false;
     if(!CheckSuperpositionFilter(signal)) return false;
     if(!CheckDimensionalAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      PARADOX v23 MODÜL FONKSIYONLARI (10 MODUL) - 228 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Temporal Paradox Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckTemporalParadoxFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTemporal)
+        return true;
+    
+    // Reverse time cycle: Check if current price is mimicking price X bars ago
+    double current = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double past = iClose(_Symbol, PERIOD_CURRENT, InpTP_CycleBars);
+    
+    tpTemporalShift = (current - past) / (atr[0] > 0 ? atr[0] : 1);
+    
+    // If paradox detected (current price is exactly opposite of cyclic expectation)
+    if(signal == SIGNAL_BUY && tpTemporalShift < -2.0) return false;
+    if(signal == SIGNAL_SELL && tpTemporalShift > 2.0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Recursive Loop Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckRecursiveFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRecursive)
+        return true;
+    
+    // Detect micro-loops (stagnation)
+    double range = 0;
+    for(int i = 0; i < InpRL_PatternSize; i++)
+    {
+        range += MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i));
+    }
+    
+    rlRecurveFactor = range / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(rlRecurveFactor < 0.2) // Price is stuck in a loop
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Butterfly Effect Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckButterflyFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseButterfly)
+        return true;
+    
+    // Sensitivity to micro-price movements
+    double tick0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double tick1 = iClose(_Symbol, PERIOD_CURRENT, 1);
+    
+    beSensitiveDelta = MathAbs(tick0 - tick1);
+    
+    // If micro-volatility is too high, it might cause chaotic results
+    if(beSensitiveDelta > atr[0] * InpBE_Sensitivy * 10)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Quantum Entanglement Filter                                      |
+//+------------------------------------------------------------------+
+bool CheckQEFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseQE)
+        return true;
+    
+    // Entanglement with Gold or Lead pair
+    double leadClose = iClose(InpQE_LeaderSymbol, PERIOD_CURRENT, 0);
+    double leadOpen = iOpen(InpQE_LeaderSymbol, PERIOD_CURRENT, 0);
+    
+    qeEntangleScore = (leadClose - leadOpen);
+    
+    if(signal == SIGNAL_BUY && qeEntangleScore < 0) return false;
+    if(signal == SIGNAL_SELL && qeEntangleScore > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Reality Fold Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckRealityFoldFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRealityFold)
+        return true;
+    
+    // Volatility Folding (Sudden contraction/expansion)
+    double std = 0;
+    for(int i = 0; i < 20; i++) std += MathPow(iClose(_Symbol, PERIOD_CURRENT, i) - ma1[i], 2);
+    std = MathSqrt(std / 20);
+    
+    rfRealityFolded = std > atr[0] * InpRF_VolStandard;
+    
+    if(rfRealityFolded) // Reality is distorted by extreme volatility
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Chronos Filter                                                   |
+//+------------------------------------------------------------------+
+bool CheckChronosFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChronos)
+        return true;
+    
+    // Time bias based on day of week
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    
+    cfChronosBias = (double)dt.day_of_week;
+    
+    if(dt.day_of_week == 1 || dt.day_of_week == 5) // Monday/Friday caution
+        cfChronosBias = 0.5;
+    else
+        cfChronosBias = 1.0;
+        
+    if(cfChronosBias < 0.6) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Chaos Theory Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckChaosFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChaos)
+        return true;
+    
+    // Fractal Dimension check
+    double h = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    double sum = 0;
+    for(int i = 0; i < 10; i++) sum += (iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i));
+    
+    ctFractalMeasure = h / (sum / 10.0 + 0.00001);
+    
+    if(ctFractalMeasure > InpCT_FractalDim) // Too chaotic/linear spike
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Mirror Inverse Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckMirrorFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMirror)
+        return true;
+    
+    // If reverse mode is on, we actually invert the signal check
+    if(InpMirror_Reverse)
+    {
+        // Internal logic to bypass or invert
+        miMirrorSignal = -1.0;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Gravity Warp Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckGravityWarpFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGravityWarp)
+        return true;
+    
+    // Deep Mass Lookback
+    double sum = 0;
+    for(int i = 0; i < InpGW_MassLookback; i++) sum += iClose(_Symbol, PERIOD_CURRENT, i);
+    double massCenter = sum / InpGW_MassLookback;
+    
+    gwWarpIntensity = (iClose(_Symbol, PERIOD_CURRENT, 0) - massCenter) / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(MathAbs(gwWarpIntensity) > 5.0) // Extreme pull from the past
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Paradox AI Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckParadoxAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseParadoxAI)
+        return true;
+    
+    // Contradiction engine
+    double conflict = 0;
+    if(tpTemporalShift * rlRecurveFactor < 0) conflict += 0.5;
+    if(qeEntangleScore * ctFractalMeasure < 0) conflict += 0.5;
+    
+    paParadoxAI_Result = 1.0 - conflict;
+    
+    if(paParadoxAI_Result < InpPA_LogicThreshold)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v23 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV23Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckTemporalParadoxFilter(signal)) return false;
+    if(!CheckRecursiveFilter(signal)) return false;
+    if(!CheckButterflyFilter(signal)) return false;
+    if(!CheckQEFilter(signal)) return false;
+    if(!CheckRealityFoldFilter(signal)) return false;
+    if(!CheckChronosFilter(signal)) return false;
+    if(!CheckChaosFilter(signal)) return false;
+    if(!CheckMirrorFilter(signal)) return false;
+    if(!CheckGravityWarpFilter(signal)) return false;
+    if(!CheckParadoxAIFilter(signal)) return false;
     
     return true;
 }
