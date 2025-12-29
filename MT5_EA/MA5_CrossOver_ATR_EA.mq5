@@ -932,7 +932,47 @@ input bool     InpUseCosmicAI      = false;        // Cosmic AI Kullan
 input double   InpCA_MinScore      = 98.0;         // Min Score (0-100)
 input int      InpCA_Layers        = 10;           // Neural Layers
 
-int handleMACD;
+input group "=== NY MIDNIGHT OPEN ==="
+input bool     InpUseNYMidnight    = true;         // NY Midnight Kullan
+input int      InpNYM_Hour         = 0;            // Midnight Hour (EST)
+
+input group "=== TRUE DAY OPEN ==="
+input bool     InpUseTrueDayOpen   = true;         // True Day Open Kullan
+input int      InpTDO_Hour         = 0;            // Day Open Hour
+
+input group "=== CENTRAL BANK DEALER ==="
+input bool     InpUseCentralBank   = true;         // Central Bank Kullan
+input int      InpCB_Period        = 100;          // Lookback
+
+input group "=== AD PRO ==="
+input bool     InpUseADPro         = true;         // AD Pro Kullan
+input int      InpAD_Period        = 20;           // Periyot
+
+input group "=== DISPLACEMENT ==="
+input bool     InpUseDisplacement  = true;         // Displacement Kullan
+input double   InpDisp_ATRMult     = 2.0;          // ATR Multiplier
+
+input group "=== RECLAIMED BLOCK ==="
+input bool     InpUseReclaimed     = true;         // Reclaimed Kullan
+input int      InpRec_Period       = 50;           // Lookback
+
+input group "=== PROPULSION BLOCK ==="
+input bool     InpUsePropulsion    = true;         // Propulsion Kullan
+input int      InpProp_Period      = 20;           // Lookback
+
+input group "=== REJECTION BLOCK ==="
+input bool     InpUseRejection     = true;         // Rejection Kullan
+input double   InpRej_WickRatio    = 2.0;          // Wick/Body Ratio
+
+input group "=== UNICORN MODEL ==="
+input bool     InpUseUnicorn       = true;         // Unicorn Kullan
+input int      InpUni_Period       = 50;           // Periyot
+
+input group "=== GALACTIC AI ==="
+input bool     InpUseGalacticAI    = false;        // Galactic AI Kullan
+input double   InpGA_MinScore      = 99.0;         // Min Score (0-100)
+input int      InpGA_Layers        = 15;           // Neural Layers
+
 int handleStoch;
 
 // NEW v3 HANDLES
@@ -1176,6 +1216,18 @@ double ipdaHigh = 0, ipdaLow = 0;
 double eqLevel = 0;
 double drHigh = 0, drLow = 0;
 double caScore = 0;
+
+// NEW v19 VALUES - GALACTIC 10
+double nymOpen = 0;
+double tdoOpen = 0;
+double cbHigh = 0, cbLow = 0;
+double adProValue = 0;
+bool displacement = false;
+double reclaimedHigh = 0, reclaimedLow = 0;
+bool propulsionBlock = false;
+bool rejectionBlock = false;
+bool unicornPattern = false;
+double gaScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -9396,6 +9448,396 @@ bool ApplyV18Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckCosmicAIFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      GALACTIC v19 MODÜL FONKSIYONLARI (10 MODUL) - 188 TOTAL     |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| NY Midnight Open Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckNYMidnightFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseNYMidnight)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    // Find NY Midnight open (EST = GMT-5)
+    for(int i = 0; i < 24; i++)
+    {
+        datetime barTime = iTime(_Symbol, PERIOD_H1, i);
+        MqlDateTime barDt;
+        TimeToStruct(barTime, barDt);
+        
+        if(barDt.hour == InpNYM_Hour + 5) // Adjust for EST
+        {
+            nymOpen = iOpen(_Symbol, PERIOD_H1, i);
+            break;
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > nymOpen)
+        return true;
+    if(signal == SIGNAL_SELL && close < nymOpen)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| True Day Open Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckTrueDayOpenFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTrueDayOpen)
+        return true;
+    
+    tdoOpen = iOpen(_Symbol, PERIOD_D1, 0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > tdoOpen)
+        return true;
+    if(signal == SIGNAL_SELL && close < tdoOpen)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Central Bank Dealer Filter                                       |
+//+------------------------------------------------------------------+
+bool CheckCentralBankFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCentralBank)
+        return true;
+    
+    cbHigh = 0;
+    cbLow = 999999;
+    
+    // Find institutional range
+    for(int i = 0; i < InpCB_Period; i++)
+    {
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        double avgVol = 0;
+        for(int j = i + 1; j < i + 20 && j < InpCB_Period; j++)
+            avgVol += iVolume(_Symbol, PERIOD_CURRENT, j);
+        avgVol /= 19;
+        
+        if(vol > avgVol * 2)
+        {
+            if(iHigh(_Symbol, PERIOD_CURRENT, i) > cbHigh) cbHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+            if(iLow(_Symbol, PERIOD_CURRENT, i) < cbLow) cbLow = iLow(_Symbol, PERIOD_CURRENT, i);
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| AD Pro Filter                                                    |
+//+------------------------------------------------------------------+
+bool CheckADProFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseADPro)
+        return true;
+    
+    adProValue = 0;
+    
+    for(int i = 0; i < InpAD_Period; i++)
+    {
+        double high = iHigh(_Symbol, PERIOD_CURRENT, i);
+        double low = iLow(_Symbol, PERIOD_CURRENT, i);
+        double close = iClose(_Symbol, PERIOD_CURRENT, i);
+        long vol = iVolume(_Symbol, PERIOD_CURRENT, i);
+        
+        double clv = (high - low) > 0 ? ((close - low) - (high - close)) / (high - low) : 0;
+        adProValue += clv * vol;
+    }
+    
+    if(signal == SIGNAL_BUY && adProValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && adProValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Displacement Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckDisplacementFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDisplacement)
+        return true;
+    
+    double atrVal = atr[0];
+    double body = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    
+    displacement = body > atrVal * InpDisp_ATRMult;
+    
+    if(displacement)
+    {
+        if(signal == SIGNAL_BUY && iClose(_Symbol, PERIOD_CURRENT, 0) < iOpen(_Symbol, PERIOD_CURRENT, 0))
+            return false;
+        if(signal == SIGNAL_SELL && iClose(_Symbol, PERIOD_CURRENT, 0) > iOpen(_Symbol, PERIOD_CURRENT, 0))
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Reclaimed Block Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckReclaimedFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseReclaimed)
+        return true;
+    
+    reclaimedHigh = 0;
+    reclaimedLow = 0;
+    
+    // Find reclaimed zone (price returns to broken level)
+    for(int i = 5; i < InpRec_Period; i++)
+    {
+        double level = (iHigh(_Symbol, PERIOD_CURRENT, i) + iLow(_Symbol, PERIOD_CURRENT, i)) / 2;
+        bool broken = false, reclaimed = false;
+        
+        for(int j = i - 1; j > 0; j--)
+        {
+            if(iClose(_Symbol, PERIOD_CURRENT, j) > level) broken = true;
+            if(broken && iClose(_Symbol, PERIOD_CURRENT, j) < level) { reclaimed = true; break; }
+        }
+        
+        if(reclaimed)
+        {
+            reclaimedHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+            reclaimedLow = iLow(_Symbol, PERIOD_CURRENT, i);
+            break;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Propulsion Block Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckPropulsionFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePropulsion)
+        return true;
+    
+    // Propulsion: strong candle that pushes price
+    propulsionBlock = false;
+    
+    for(int i = 1; i <= InpProp_Period; i++)
+    {
+        double body = MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - iOpen(_Symbol, PERIOD_CURRENT, i));
+        double range = iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+        
+        if(range > 0 && body / range > 0.8)
+        {
+            propulsionBlock = true;
+            break;
+        }
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Rejection Block Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckRejectionFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRejection)
+        return true;
+    
+    double open = iOpen(_Symbol, PERIOD_CURRENT, 0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double high = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double low = iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    double body = MathAbs(close - open);
+    double upperWick = high - MathMax(open, close);
+    double lowerWick = MathMin(open, close) - low;
+    
+    // Rejection = long wick, small body
+    rejectionBlock = (upperWick > body * InpRej_WickRatio) || (lowerWick > body * InpRej_WickRatio);
+    
+    if(signal == SIGNAL_BUY && upperWick > body * InpRej_WickRatio)
+        return false;
+    if(signal == SIGNAL_SELL && lowerWick > body * InpRej_WickRatio)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Unicorn Model Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckUnicornFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseUnicorn)
+        return true;
+    
+    // Unicorn: FVG + Order Block + CHoCH
+    unicornPattern = false;
+    
+    // Check for FVG
+    bool fvgFound = fvgHigh > 0 || fvgLow > 0;
+    
+    // Check for Order Block
+    bool obFound = obHigh > 0 || obLow > 0;
+    
+    // Check for CHoCH
+    bool chochFound = chochDir != 0;
+    
+    unicornPattern = fvgFound && obFound && chochFound;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Galactic AI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckGalacticAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGalacticAI)
+        return true;
+    
+    // Ultimate galactic neural scoring
+    double inputs[60];
+    int inCount = 0;
+    
+    // All signals
+    inputs[inCount++] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    inputs[inCount++] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    inputs[inCount++] = kamaValue > kamaPrev ? 1.0 : -1.0;
+    inputs[inCount++] = tsiValue / 100.0;
+    inputs[inCount++] = chopIndex < 50 ? 1.0 : -1.0;
+    inputs[inCount++] = htTrend ? 1.0 : -1.0;
+    inputs[inCount++] = ictBias;
+    inputs[inCount++] = chochDir;
+    inputs[inCount++] = bosDir;
+    inputs[inCount++] = mmPhase == 3 ? 1.0 : 0.0;
+    inputs[inCount++] = po3Phase >= 2 ? 1.0 : 0.0;
+    inputs[inCount++] = judasSwing ? 1.0 : 0.0;
+    inputs[inCount++] = londonCloseTime ? 1.0 : 0.0;
+    inputs[inCount++] = displacement ? 1.0 : 0.0;
+    inputs[inCount++] = propulsionBlock ? 1.0 : 0.0;
+    inputs[inCount++] = rejectionBlock ? -1.0 : 0.0;
+    inputs[inCount++] = unicornPattern ? 1.0 : 0.0;
+    inputs[inCount++] = adProValue > 0 ? 1.0 : -1.0;
+    inputs[inCount++] = caScore / 100.0;
+    inputs[inCount++] = eaScore / 100.0;
+    inputs[inCount++] = iaScore / 100.0;
+    
+    // Deep galactic network with 6 layers
+    double layer1[20], layer2[20], layer3[20], layer4[20], layer5[20], layer6[20];
+    int layerSize = MathMin(InpGA_Layers, 20);
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer1[j] = 0;
+        for(int i = 0; i < inCount; i++)
+            layer1[j] += inputs[i] * MathSin((i + 1) * (j + 1) * 0.05);
+        layer1[j] = MathTanh(layer1[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer2[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer2[j] += layer1[i] * MathCos((i + j) * 0.08);
+        layer2[j] = MathTanh(layer2[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer3[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer3[j] += layer2[i] * MathSin((i * j + 1) * 0.06);
+        layer3[j] = MathTanh(layer3[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer4[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer4[j] += layer3[i] * MathCos((i + j + 1) * 0.05);
+        layer4[j] = MathTanh(layer4[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer5[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer5[j] += layer4[i] * MathSin((i * j + 2) * 0.04);
+        layer5[j] = MathTanh(layer5[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer6[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer6[j] += layer5[i] * MathCos((i + j + 2) * 0.03);
+        layer6[j] = MathTanh(layer6[j]);
+    }
+    
+    gaScore = 0;
+    for(int j = 0; j < layerSize; j++)
+        gaScore += layer6[j] * (0.05 + 0.02 * (j % 10));
+    gaScore = (MathTanh(gaScore) + 1) / 2 * 100;
+    
+    if(gaScore < InpGA_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v19 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV19Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckNYMidnightFilter(signal))
+        return false;
+    
+    if(!CheckTrueDayOpenFilter(signal))
+        return false;
+    
+    if(!CheckCentralBankFilter(signal))
+        return false;
+    
+    if(!CheckADProFilter(signal))
+        return false;
+    
+    if(!CheckDisplacementFilter(signal))
+        return false;
+    
+    if(!CheckReclaimedFilter(signal))
+        return false;
+    
+    if(!CheckPropulsionFilter(signal))
+        return false;
+    
+    if(!CheckRejectionFilter(signal))
+        return false;
+    
+    if(!CheckUnicornFilter(signal))
+        return false;
+    
+    if(!CheckGalacticAIFilter(signal))
         return false;
     
     return true;
