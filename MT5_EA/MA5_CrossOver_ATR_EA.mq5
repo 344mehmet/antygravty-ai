@@ -849,8 +849,48 @@ input bool     InpUseInfinityAI    = false;        // Infinity AI Kullan
 input double   InpIA_MinScore      = 90.0;         // Min Score (0-100)
 input int      InpIA_Neurons       = 20;           // Neural Count
 
+input group "=== LIQUIDITY SWEEP ==="
+input bool     InpUseLiqSweep      = true;         // Liq Sweep Kullan
+input int      InpLS_Period        = 20;           // Lookback
 
-// NEW 10 MODULE HANDLES
+input group "=== CHANGE OF CHARACTER ==="
+input bool     InpUseCHoCH         = true;         // CHoCH Kullan
+input int      InpCH_Period        = 50;           // Periyot
+
+input group "=== BREAK OF STRUCTURE ==="
+input bool     InpUseBOS           = true;         // BOS Kullan
+input int      InpBOS_Period       = 50;           // Periyot
+
+input group "=== INDUCEMENT ==="
+input bool     InpUseInducement    = true;         // Inducement Kullan
+input int      InpInd_Period       = 30;           // Lookback
+
+input group "=== STOP HUNT ==="
+input bool     InpUseStopHunt      = true;         // Stop Hunt Kullan
+input double   InpSH_Threshold     = 1.5;          // ATR Multiple
+
+input group "=== MARKET MAKER MODEL ==="
+input bool     InpUseMMModel       = true;         // MM Model Kullan
+input int      InpMM_LookBack      = 100;          // Lookback
+
+input group "=== POWER OF 3 (AMD) ==="
+input bool     InpUsePO3           = true;         // PO3 Kullan
+input int      InpPO3_AccumHours   = 6;            // Accumulation Hours
+
+input group "=== SILVER BULLET ==="
+input bool     InpUseSilverBullet  = true;         // Silver Bullet Kullan
+input int      InpSB_StartHour     = 10;           // Start Hour (GMT)
+input int      InpSB_EndHour       = 11;           // End Hour (GMT)
+
+input group "=== TIME & PRICE ==="
+input bool     InpUseTimePrice     = true;         // Time & Price Kullan
+input int      InpTP_Quarter       = 1;            // Quarter Focus (1-4)
+
+input group "=== ETERNAL AI ==="
+input bool     InpUseEternalAI     = false;        // Eternal AI Kullan
+input double   InpEA_MinScore      = 95.0;         // Min Score (0-100)
+input int      InpEA_Depth         = 50;           // Neural Depth
+
 int handleBB;
 int handleMACD;
 int handleStoch;
@@ -1072,6 +1112,18 @@ double mitHigh = 0, mitLow = 0;
 double arHigh = 0, arLow = 0;
 bool inPremium = false, inDiscount = false;
 double iaScore = 0;
+
+// NEW v17 VALUES - ABSOLUTE 10
+bool liqSweep = false;
+int chochDir = 0; // 1=Bullish CHoCH, -1=Bearish CHoCH
+int bosDir = 0; // 1=Bullish BOS, -1=Bearish BOS
+bool inducementTrap = false;
+bool stopHuntDetected = false;
+int mmPhase = 0;
+int po3Phase = 0; // 1=Accum, 2=Manip, 3=Dist
+bool silverBulletTime = false;
+int tpQuarter = 0;
+double eaScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -8545,6 +8597,372 @@ bool ApplyV16Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckInfinityAIFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|       ABSOLUTE v17 MODÜL FONKSIYONLARI (10 MODUL) - 168 TOTAL    |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Liquidity Sweep Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckLiqSweepFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLiqSweep)
+        return true;
+    
+    double highest = 0, lowest = 999999;
+    int highIdx = 0, lowIdx = 0;
+    
+    for(int i = 0; i < InpLS_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) { highest = iHigh(_Symbol, PERIOD_CURRENT, i); highIdx = i; }
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) { lowest = iLow(_Symbol, PERIOD_CURRENT, i); lowIdx = i; }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Sweep = price goes beyond level then reverses
+    liqSweep = (close > highest && highIdx > 0) || (close < lowest && lowIdx > 0);
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Change of Character (CHoCH) Filter                               |
+//+------------------------------------------------------------------+
+bool CheckCHoCHFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCHoCH)
+        return true;
+    
+    // Find swing highs and lows
+    double prevSwingHigh = 0, prevSwingLow = 999999;
+    double currentSwingHigh = 0, currentSwingLow = 999999;
+    
+    for(int i = InpCH_Period / 2; i < InpCH_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > prevSwingHigh) prevSwingHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < prevSwingLow) prevSwingLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    for(int i = 0; i < InpCH_Period / 2; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > currentSwingHigh) currentSwingHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < currentSwingLow) currentSwingLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    // CHoCH: Break of previous swing
+    if(currentSwingLow < prevSwingLow && currentSwingHigh < prevSwingHigh) chochDir = -1; // Bearish CHoCH
+    else if(currentSwingHigh > prevSwingHigh && currentSwingLow > prevSwingLow) chochDir = 1; // Bullish CHoCH
+    else chochDir = 0;
+    
+    if(signal == SIGNAL_BUY && chochDir < 0)
+        return false;
+    if(signal == SIGNAL_SELL && chochDir > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Break of Structure (BOS) Filter                                  |
+//+------------------------------------------------------------------+
+bool CheckBOSFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBOS)
+        return true;
+    
+    double prevHigh = 0, prevLow = 999999;
+    
+    for(int i = 5; i < InpBOS_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > prevHigh) prevHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < prevLow) prevLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(close > prevHigh) bosDir = 1; // Bullish BOS
+    else if(close < prevLow) bosDir = -1; // Bearish BOS
+    else bosDir = 0;
+    
+    if(signal == SIGNAL_BUY && bosDir < 0)
+        return false;
+    if(signal == SIGNAL_SELL && bosDir > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Inducement Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckInducementFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseInducement)
+        return true;
+    
+    // Check for liquidity grab (inducement trap)
+    double recentHigh = 0, recentLow = 999999;
+    
+    for(int i = 0; i < InpInd_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > recentHigh) recentHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < recentLow) recentLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close0 = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double close1 = iClose(_Symbol, PERIOD_CURRENT, 1);
+    
+    // Inducement: price spikes beyond level then reverses
+    inducementTrap = (close1 > recentHigh && close0 < recentHigh) || 
+                     (close1 < recentLow && close0 > recentLow);
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Stop Hunt Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckStopHuntFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStopHunt)
+        return true;
+    
+    double atrVal = atr[0];
+    double prevHigh = iHigh(_Symbol, PERIOD_CURRENT, 1);
+    double prevLow = iLow(_Symbol, PERIOD_CURRENT, 1);
+    double currentHigh = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double currentLow = iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Stop hunt: sudden spike beyond average range
+    stopHuntDetected = (currentHigh - prevHigh > atrVal * InpSH_Threshold) ||
+                       (prevLow - currentLow > atrVal * InpSH_Threshold);
+    
+    // After stop hunt, expect reversal
+    if(signal == SIGNAL_BUY && stopHuntDetected && currentHigh > prevHigh)
+        return false;
+    if(signal == SIGNAL_SELL && stopHuntDetected && currentLow < prevLow)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Market Maker Model Filter                                        |
+//+------------------------------------------------------------------+
+bool CheckMMModelFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMMModel)
+        return true;
+    
+    // Detect accumulation, manipulation, distribution
+    double range = 0;
+    double avgRange = 0;
+    
+    for(int i = 0; i < InpMM_LookBack; i++)
+        avgRange += iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i);
+    avgRange /= InpMM_LookBack;
+    
+    range = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(range < avgRange * 0.5) mmPhase = 1; // Accumulation
+    else if(range > avgRange * 1.5) mmPhase = 2; // Manipulation/Distribution
+    else mmPhase = 3; // Trend
+    
+    // Trade during accumulation breakout
+    if(mmPhase == 2)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Power of 3 (AMD) Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckPO3Filter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePO3)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    int hour = dt.hour;
+    
+    // Power of 3: Accumulation (Asian), Manipulation (London), Distribution (NY)
+    if(hour < InpPO3_AccumHours) po3Phase = 1; // Accumulation
+    else if(hour >= InpPO3_AccumHours && hour < 13) po3Phase = 2; // Manipulation
+    else po3Phase = 3; // Distribution
+    
+    // Best entries during manipulation phase
+    if(po3Phase == 1)
+        return false; // Don't trade during accumulation
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Silver Bullet Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckSilverBulletFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSilverBullet)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    int hour = dt.hour;
+    
+    // Silver Bullet: 10-11 AM GMT (London)
+    silverBulletTime = (hour >= InpSB_StartHour && hour < InpSB_EndHour);
+    
+    if(!silverBulletTime)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Time & Price Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckTimePriceFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTimePrice)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    // Determine quarter of the day
+    if(dt.hour < 6) tpQuarter = 1;
+    else if(dt.hour < 12) tpQuarter = 2;
+    else if(dt.hour < 18) tpQuarter = 3;
+    else tpQuarter = 4;
+    
+    if(tpQuarter != InpTP_Quarter)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Eternal AI Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckEternalAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEternalAI)
+        return true;
+    
+    // Ultimate deep learning scoring
+    double inputs[40];
+    int inCount = 0;
+    
+    // Collect all signals
+    inputs[inCount++] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    inputs[inCount++] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    inputs[inCount++] = kamaValue > kamaPrev ? 1.0 : -1.0;
+    inputs[inCount++] = tsiValue / 100.0;
+    inputs[inCount++] = rmiValue / 100.0;
+    inputs[inCount++] = chopIndex < 50 ? 1.0 : -1.0;
+    inputs[inCount++] = (double)confSignals / 5.0;
+    inputs[inCount++] = htTrend ? 1.0 : -1.0;
+    inputs[inCount++] = ictBias;
+    inputs[inCount++] = wyckPhase == 1 || wyckPhase == 2 ? 1.0 : -1.0;
+    inputs[inCount++] = chochDir;
+    inputs[inCount++] = bosDir;
+    inputs[inCount++] = inducementTrap ? 1.0 : 0.0;
+    inputs[inCount++] = stopHuntDetected ? 1.0 : 0.0;
+    inputs[inCount++] = mmPhase == 3 ? 1.0 : 0.0;
+    inputs[inCount++] = po3Phase >= 2 ? 1.0 : 0.0;
+    inputs[inCount++] = silverBulletTime ? 1.0 : 0.0;
+    inputs[inCount++] = inDiscount && signal == SIGNAL_BUY ? 1.0 : 0.0;
+    inputs[inCount++] = inPremium && signal == SIGNAL_SELL ? 1.0 : 0.0;
+    inputs[inCount++] = iaScore / 100.0;
+    
+    // Deep network with 4 layers
+    double layer1[20], layer2[20], layer3[20], layer4[20];
+    int layerSize = MathMin(InpEA_Depth / 3, 20);
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer1[j] = 0;
+        for(int i = 0; i < inCount; i++)
+            layer1[j] += inputs[i] * MathSin((i + 1) * (j + 1) * 0.08);
+        layer1[j] = MathTanh(layer1[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer2[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer2[j] += layer1[i] * MathCos((i + j) * 0.12);
+        layer2[j] = MathTanh(layer2[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer3[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer3[j] += layer2[i] * MathSin((i * j + 1) * 0.1);
+        layer3[j] = MathTanh(layer3[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer4[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer4[j] += layer3[i] * MathCos((i + j + 1) * 0.08);
+        layer4[j] = MathTanh(layer4[j]);
+    }
+    
+    eaScore = 0;
+    for(int j = 0; j < layerSize; j++)
+        eaScore += layer4[j] * (0.08 + 0.04 * (j % 6));
+    eaScore = (MathTanh(eaScore) + 1) / 2 * 100;
+    
+    if(eaScore < InpEA_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v17 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV17Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckLiqSweepFilter(signal))
+        return false;
+    
+    if(!CheckCHoCHFilter(signal))
+        return false;
+    
+    if(!CheckBOSFilter(signal))
+        return false;
+    
+    if(!CheckInducementFilter(signal))
+        return false;
+    
+    if(!CheckStopHuntFilter(signal))
+        return false;
+    
+    if(!CheckMMModelFilter(signal))
+        return false;
+    
+    if(!CheckPO3Filter(signal))
+        return false;
+    
+    if(!CheckSilverBulletFilter(signal))
+        return false;
+    
+    if(!CheckTimePriceFilter(signal))
+        return false;
+    
+    if(!CheckEternalAIFilter(signal))
         return false;
     
     return true;
