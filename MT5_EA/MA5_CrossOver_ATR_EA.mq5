@@ -1342,6 +1342,46 @@ input group "=== APEX AI ==="
 input bool     InpUseApexAI        = false;        // Apex AI Kullan
 input double   InpAAI_Intelligence = 0.9;          // Logic weight
 
+input group "=== GUARDIAN SHIELD ==="
+input bool     InpUseGuardian      = true;         // Guardian Shield Kullan
+input double   InpGS_VolStretch    = 2.5;          // Volatility stretch limit
+
+input group "=== SENTRY WATCH ==="
+input bool     InpUseSentry        = true;         // Sentry Watch Kullan
+input int      InpSW_GapLimit      = 200;          // Max gap size (points)
+
+input group "=== PATHFINDER FLOW ==="
+input bool     InpUsePathfinder    = true;         // Pathfinder Flow Kullan
+input int      InpPF_SlowPeriod    = 100;          // Base trend confirmation
+
+input group "=== OBSERVER NODE ==="
+input bool     InpUseObserver      = true;         // Observer Node Kullan
+input double   InpON_VolThreshold  = 1.2;          // Volume relative threshold
+
+input group "=== RELAY STATION ==="
+input bool     InpUseRelay         = true;         // Relay Station Kullan
+input ENUM_TIMEFRAMES InpRS_Timeframe = PERIOD_W1; // Long-term anchor
+
+input group "=== FORTRESS LOGIC ==="
+input bool     InpUseFortress      = true;         // Fortress Logic Kullan
+input double   InpFL_DDLimit       = 10.0;         // Lot reduction at DD %
+
+input group "=== SCOUT DRONE ==="
+input bool     InpUseScout         = true;         // Scout Drone Kullan
+input double   InpSD_MinATR        = 10.0;         // Minimum ATR required
+
+input group "=== WARDEN FILTER ==="
+input bool     InpUseWarden        = true;         // Warden Filter Kullan
+input double   InpWF_SwapLimit     = -5.0;         // Negative swap protection
+
+input group "=== VANGUARD SIGNAL ==="
+input bool     InpUseVanguard      = true;         // Vanguard Signal Kullan
+input int      InpVS_FastLookback  = 3;            // Early pulse lookback
+
+input group "=== SENTINEL AI ==="
+input bool     InpUseSentinelAI    = false;        // Sentinel AI Kullan
+input double   InpSAI_Sensitivity  = 0.95;         // Guard duty threshold
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1703,6 +1743,18 @@ double sfSharkFinDiv = 0;
 double evEagleEyeScore = 0;
 double lhLionHeartMultiplier = 1.0;
 double aaiApexAI_Result = 0;
+
+// NEW v29 VALUES - SENTINEL 10
+double gsGuardianStretch = 0;
+double swGapSize = 0;
+double pfPathfinderScore = 0;
+double onObserverVolume = 0;
+double rsRelayTrend = 0;
+double flFortressLotMod = 1.0;
+double sdScoutATR = 0;
+double wfWardenSwap = 0;
+double vsVanguardPulse = 0;
+double saiSentinelAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -3155,7 +3207,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v28 Module Aggregates
+    // Apply v1-v29 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3202,6 +3254,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV27Filters(signal)) return false;
     // v28
     if(!ApplyV28Filters(signal)) return false;
+    // v29
+    if(!ApplyV29Filters(signal)) return false;
     
     return true;
 }
@@ -12820,6 +12874,212 @@ bool ApplyV28Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckEagleVisionFilter(signal)) return false;
     if(!CheckLionHeartFilter(signal)) return false;
     if(!CheckApexAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|      SENTINEL v29 MODÜL FONKSIYONLARI (10 MODUL) - 288 TOTAL     |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Guardian Shield Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckGuardianShieldFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseGuardian)
+        return true;
+    
+    // Stretch of the current bar relative to ATR
+    double range = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    gsGuardianStretch = range / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(gsGuardianStretch > InpGS_VolStretch) // Market is overstretched (Unsafe)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Sentry Watch Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckSentryWatchFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSentry)
+        return true;
+    
+    // Gap detection at open
+    double gap = MathAbs(iOpen(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, 1));
+    swGapSize = gap / SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    
+    if(swGapSize > InpSW_GapLimit) // Large gap detected (Wait for fill or stabilization)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Pathfinder Flow Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckPathfinderFlowFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePathfinder)
+        return true;
+    
+    // Distance from slow MA
+    double slowMA = iMA(_Symbol, PERIOD_CURRENT, InpPF_SlowPeriod, 0, MODE_SMA, PRICE_CLOSE);
+    pfPathfinderScore = (iClose(_Symbol, PERIOD_CURRENT, 0) - slowMA);
+    
+    if(signal == SIGNAL_BUY && pfPathfinderScore < 0) return false;
+    if(signal == SIGNAL_SELL && pfPathfinderScore > 0) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Observer Node Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckObserverNodeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseObserver)
+        return true;
+    
+    // Volume spike observer
+    double avgVol = 0;
+    for(int i = 1; i < 20; i++) avgVol += (double)iVolume(_Symbol, PERIOD_CURRENT, i);
+    avgVol /= 19;
+    
+    onObserverVolume = (double)iVolume(_Symbol, PERIOD_CURRENT, 0) / (avgVol > 0 ? avgVol : 1);
+    
+    if(onObserverVolume > InpON_VolThreshold * 2.0) // Abnormal volume spike (Blow-off)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Relay Station Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckRelayStationFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRelay)
+        return true;
+    
+    // Long-term Weekly trend
+    double rsiW1 = iRSI(_Symbol, InpRS_Timeframe, 14, PRICE_CLOSE, 0);
+    rsRelayTrend = rsiW1;
+    
+    if(signal == SIGNAL_BUY && rsiW1 < 48) return false;
+    if(signal == SIGNAL_SELL && rsiW1 > 52) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Fortress Logic Filter                                            |
+//+------------------------------------------------------------------+
+bool CheckFortressLogicFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFortress)
+        return true;
+    
+    // Lot reduction at high drawdown
+    if(currentDrawdown > InpFL_DDLimit)
+        flFortressLotMod = 0.5; // Defensive posture
+    else
+        flFortressLotMod = 1.0;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Scout Drone Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckScoutDroneFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseScout)
+        return true;
+    
+    // Minimum ATR scout
+    sdScoutATR = atr[0] / SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    
+    if(sdScoutATR < InpSD_MinATR) // Liquidity/volatility too low
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Warden Filter                                                    |
+//+------------------------------------------------------------------+
+bool CheckWardenFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWarden)
+        return true;
+    
+    // Protective swap check
+    double swapBuy = SymbolInfoDouble(_Symbol, SYMBOL_SWAP_LONG);
+    double swapSell = SymbolInfoDouble(_Symbol, SYMBOL_SWAP_SHORT);
+    
+    wfWardenSwap = (signal == SIGNAL_BUY) ? swapBuy : swapSell;
+    
+    if(wfWardenSwap < InpWF_SwapLimit) // Avoid high-cost carries
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Vanguard Signal Filter                                           |
+//+------------------------------------------------------------------+
+bool CheckVanguardFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseVanguard)
+        return true;
+    
+    // Early pulse check: is the last 3 bars moving fast?
+    double pulse = iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpVS_FastLookback);
+    vsVanguardPulse = pulse / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(signal == SIGNAL_BUY && vsVanguardPulse < 0.1) return false;
+    if(signal == SIGNAL_SELL && vsVanguardPulse > -0.1) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Sentinel AI Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSentinelAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSentinelAI)
+        return true;
+    
+    // Security Consensus
+    double security = (1.1 - gsGuardianStretch / 10.0) + (sdScoutATR / 100.0) + (onObserverVolume / 2.0);
+    saiSentinelAI_Result = MathTanh(security / 3.0);
+    
+    if(saiSentinelAI_Result < InpSAI_Sensitivity - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v29 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV29Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckGuardianShieldFilter(signal)) return false;
+    if(!CheckSentryWatchFilter(signal)) return false;
+    if(!CheckPathfinderFlowFilter(signal)) return false;
+    if(!CheckObserverNodeFilter(signal)) return false;
+    if(!CheckRelayStationFilter(signal)) return false;
+    if(!CheckFortressLogicFilter(signal)) return false;
+    if(!CheckScoutDroneFilter(signal)) return false;
+    if(!CheckWardenFilter(signal)) return false;
+    if(!CheckVanguardFilter(signal)) return false;
+    if(!CheckSentinelAIFilter(signal)) return false;
     
     return true;
 }
