@@ -617,7 +617,57 @@ input bool     InpUseFinalOpt      = false;        // Final Opt Kullan
 input int      InpFO_Period        = 1000;         // Optimization Period
 input bool     InpFO_AutoAdjust    = true;         // Oto Ayarlama
 
-int handleATR;
+input group "=== KAMA (Kaufman AMA) ==="
+input bool     InpUseKAMA          = true;         // KAMA Kullan
+input int      InpKAMA_Period      = 10;           // Periyot
+input int      InpKAMA_Fast        = 2;            // Fast SC
+input int      InpKAMA_Slow        = 30;           // Slow SC
+
+input group "=== RMI (Relative Momentum) ==="
+input bool     InpUseRMI           = true;         // RMI Kullan
+input int      InpRMI_Period       = 14;           // Periyot
+input int      InpRMI_Momentum     = 4;            // Momentum
+
+input group "=== SMI ERGODIC ==="
+input bool     InpUseSMIErg        = true;         // SMI Ergodic Kullan
+input int      InpSMIErg_R         = 5;            // R Periyot
+input int      InpSMIErg_S         = 20;           // S Periyot
+input int      InpSMIErg_U         = 5;            // U Periyot
+
+input group "=== CHOPPINESS INDEX ==="
+input bool     InpUseChop          = true;         // Choppiness Kullan
+input int      InpChop_Period      = 14;           // Periyot
+input double   InpChop_High        = 61.8;         // Range Threshold
+input double   InpChop_Low         = 38.2;         // Trend Threshold
+
+input group "=== QQE (Quantitative Qualitative) ==="
+input bool     InpUseQQE           = true;         // QQE Kullan
+input int      InpQQE_RSI          = 14;           // RSI Periyot
+input double   InpQQE_SF           = 5.0;          // Smoothing Factor
+
+input group "=== SSL CHANNEL ==="
+input bool     InpUseSSL           = true;         // SSL Kullan
+input int      InpSSL_Period       = 10;           // Periyot
+
+input group "=== HALF TREND ==="
+input bool     InpUseHalfTrend     = true;         // HalfTrend Kullan
+input int      InpHT_Amplitude     = 2;            // Amplitude
+input int      InpHT_Channel       = 0;            // Channel Deviation
+
+input group "=== WADDAH ATTAR ==="
+input bool     InpUseWaddah        = true;         // Waddah Kullan
+input int      InpWaddah_Fast      = 20;           // Fast MA
+input int      InpWaddah_Slow      = 40;           // Slow MA
+input double   InpWaddah_Sens      = 150.0;        // Sensitivity
+
+input group "=== RISK/REWARD CALCULATOR ==="
+input bool     InpUseRR            = true;         // R/R Kullan
+input double   InpRR_MinRatio      = 1.5;          // Min R/R Ratio
+
+input group "=== ULTIMATE TRADING SCORE ==="
+input bool     InpUseUltScore      = false;        // Ultimate Score Kullan
+input double   InpUS_MinScore      = 70.0;         // Min Score (0-100)
+
 
 // New module handles
 int handleRSI;
@@ -786,6 +836,18 @@ int statsWins = 0, statsLosses = 0;
 double egDailyDD = 0;
 double tsiValue = 0, tsiSignal = 0;
 double finalOptScore = 0;
+
+// NEW v12 VALUES - SUPER 10
+double kamaValue = 0, kamaPrev = 0;
+double rmiValue = 0;
+double smiErgValue = 0, smiErgSignal = 0;
+double chopIndex = 0;
+double qqeValue = 0, qqeLine = 0;
+double sslUp = 0, sslDown = 0;
+bool htTrend = true;
+double waddahValue = 0, waddahExp = 0;
+double rrRatio = 0;
+double ultScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -6311,6 +6373,370 @@ bool ApplyV11Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckFinalOptFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        SUPER v12 MODÜL FONKSIYONLARI (10 MODUL) - 118 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| KAMA (Kaufman Adaptive MA) Filter                                |
+//+------------------------------------------------------------------+
+bool CheckKAMAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseKAMA)
+        return true;
+    
+    // Calculate Efficiency Ratio
+    double change = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - 
+                           iClose(_Symbol, PERIOD_CURRENT, InpKAMA_Period));
+    
+    double volatility = 0;
+    for(int i = 0; i < InpKAMA_Period; i++)
+        volatility += MathAbs(iClose(_Symbol, PERIOD_CURRENT, i) - 
+                             iClose(_Symbol, PERIOD_CURRENT, i + 1));
+    
+    double er = volatility != 0 ? change / volatility : 0;
+    
+    // Calculate smoothing constant
+    double fastSC = 2.0 / (InpKAMA_Fast + 1);
+    double slowSC = 2.0 / (InpKAMA_Slow + 1);
+    double sc = MathPow(er * (fastSC - slowSC) + slowSC, 2);
+    
+    kamaPrev = kamaValue;
+    if(kamaValue == 0) kamaValue = iClose(_Symbol, PERIOD_CURRENT, 0);
+    kamaValue = kamaValue + sc * (iClose(_Symbol, PERIOD_CURRENT, 0) - kamaValue);
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < kamaValue)
+        return false;
+    if(signal == SIGNAL_SELL && close > kamaValue)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| RMI (Relative Momentum Index) Filter                             |
+//+------------------------------------------------------------------+
+bool CheckRMIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRMI)
+        return true;
+    
+    double gains = 0, losses = 0;
+    
+    for(int i = 0; i < InpRMI_Period; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - 
+                       iClose(_Symbol, PERIOD_CURRENT, i + InpRMI_Momentum);
+        if(change > 0) gains += change;
+        else losses -= change;
+    }
+    
+    rmiValue = (gains + losses) != 0 ? 
+               100 * gains / (gains + losses) : 50;
+    
+    if(signal == SIGNAL_BUY && rmiValue < 30)
+        return false;
+    if(signal == SIGNAL_SELL && rmiValue > 70)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| SMI Ergodic Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSMIErgFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSMIErg)
+        return true;
+    
+    // Calculate SMI Ergodic (simplified)
+    double sumPC = 0, sumAPC = 0;
+    
+    for(int i = 0; i < InpSMIErg_R; i++)
+    {
+        double pc = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        sumPC += pc;
+        sumAPC += MathAbs(pc);
+    }
+    
+    smiErgValue = sumAPC != 0 ? (sumPC / sumAPC) * 100 : 0;
+    smiErgSignal = smiErgValue * 0.8;
+    
+    if(signal == SIGNAL_BUY && smiErgValue < smiErgSignal)
+        return false;
+    if(signal == SIGNAL_SELL && smiErgValue > smiErgSignal)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Choppiness Index Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckChopFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseChop)
+        return true;
+    
+    // Calculate Choppiness Index
+    double sumATR = 0;
+    double highest = 0, lowest = 999999;
+    
+    for(int i = 0; i < InpChop_Period; i++)
+    {
+        double tr = MathMax(iHigh(_Symbol, PERIOD_CURRENT, i) - iLow(_Symbol, PERIOD_CURRENT, i),
+                   MathMax(MathAbs(iHigh(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1)),
+                          MathAbs(iLow(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1))));
+        sumATR += tr;
+        
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double range = highest - lowest;
+    chopIndex = range > 0 ? 100 * MathLog10(sumATR / range) / MathLog10(InpChop_Period) : 50;
+    
+    // High chop = range, low chop = trend
+    if(chopIndex > InpChop_High)
+        return false; // Don't trade in choppy market
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| QQE (Quantitative Qualitative Estimation) Filter                 |
+//+------------------------------------------------------------------+
+bool CheckQQEFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseQQE)
+        return true;
+    
+    // Calculate RSI
+    double gains = 0, losses = 0;
+    for(int i = 0; i < InpQQE_RSI; i++)
+    {
+        double change = iClose(_Symbol, PERIOD_CURRENT, i) - iClose(_Symbol, PERIOD_CURRENT, i + 1);
+        if(change > 0) gains += change;
+        else losses -= change;
+    }
+    double rsiVal = losses == 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    
+    qqeValue = rsiVal;
+    qqeLine = 50 + (rsiVal - 50) * 0.5;
+    
+    if(signal == SIGNAL_BUY && qqeValue < qqeLine)
+        return false;
+    if(signal == SIGNAL_SELL && qqeValue > qqeLine)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| SSL Channel Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSSLFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSSL)
+        return true;
+    
+    // Calculate SSL Channel (SMA High/Low)
+    double smaHigh = 0, smaLow = 0;
+    
+    for(int i = 0; i < InpSSL_Period; i++)
+    {
+        smaHigh += iHigh(_Symbol, PERIOD_CURRENT, i);
+        smaLow += iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    smaHigh /= InpSSL_Period;
+    smaLow /= InpSSL_Period;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(close > smaHigh)
+    {
+        sslUp = smaHigh;
+        sslDown = smaLow;
+    }
+    else if(close < smaLow)
+    {
+        sslUp = smaLow;
+        sslDown = smaHigh;
+    }
+    
+    if(signal == SIGNAL_BUY && close < sslUp)
+        return false;
+    if(signal == SIGNAL_SELL && close > sslDown)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Half Trend Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckHalfTrendFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseHalfTrend)
+        return true;
+    
+    double atrVal = atr[0] * InpHT_Amplitude;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double prevClose = iClose(_Symbol, PERIOD_CURRENT, 1);
+    
+    // Simplified Half Trend
+    double avgHL = (iHigh(_Symbol, PERIOD_CURRENT, 0) + iLow(_Symbol, PERIOD_CURRENT, 0)) / 2.0;
+    
+    if(close > avgHL + atrVal) htTrend = true;
+    else if(close < avgHL - atrVal) htTrend = false;
+    
+    if(signal == SIGNAL_BUY && !htTrend)
+        return false;
+    if(signal == SIGNAL_SELL && htTrend)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Waddah Attar Explosion Filter                                    |
+//+------------------------------------------------------------------+
+bool CheckWaddahFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseWaddah)
+        return true;
+    
+    // Calculate MACD-style explosion
+    double fastMA = 0, slowMA = 0;
+    
+    for(int i = 0; i < InpWaddah_Fast; i++)
+        fastMA += iClose(_Symbol, PERIOD_CURRENT, i);
+    fastMA /= InpWaddah_Fast;
+    
+    for(int i = 0; i < InpWaddah_Slow; i++)
+        slowMA += iClose(_Symbol, PERIOD_CURRENT, i);
+    slowMA /= InpWaddah_Slow;
+    
+    waddahValue = (fastMA - slowMA) * InpWaddah_Sens;
+    waddahExp = atr[0] * InpWaddah_Sens / 10;
+    
+    // Explosion condition
+    if(MathAbs(waddahValue) < waddahExp)
+        return false; // No explosion
+    
+    if(signal == SIGNAL_BUY && waddahValue < 0)
+        return false;
+    if(signal == SIGNAL_SELL && waddahValue > 0)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Risk/Reward Calculator Filter                                    |
+//+------------------------------------------------------------------+
+bool CheckRRFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRR)
+        return true;
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double atrVal = atr[0];
+    
+    double potentialReward = atrVal * InpAtr_SL_Mult * 2; // Assuming 2x TP
+    double potentialRisk = atrVal * InpAtr_SL_Mult;
+    
+    rrRatio = potentialRisk > 0 ? potentialReward / potentialRisk : 0;
+    
+    if(rrRatio < InpRR_MinRatio)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Ultimate Trading Score Filter                                    |
+//+------------------------------------------------------------------+
+bool CheckUltScoreFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseUltScore)
+        return true;
+    
+    // Calculate comprehensive trading score (0-100)
+    double score = 50;
+    int factors = 0;
+    
+    // Trend factors
+    if(ma1[0] > ma3[0]) score += 5; else score -= 5; factors++;
+    if(kamaValue > kamaPrev) score += 5; else score -= 5; factors++;
+    
+    // Momentum factors
+    if(ArraySize(rsi) > 0 && rsi[0] > 50) score += 5; else score -= 5; factors++;
+    if(rmiValue > 50) score += 5; else score -= 5; factors++;
+    if(tsiValue > 0) score += 5; else score -= 5; factors++;
+    
+    // Volatility factors
+    if(chopIndex < InpChop_High) score += 5; else score -= 5; factors++;
+    if(atr[0] > atr[1]) score += 3; else score -= 3; factors++;
+    
+    // Volume/Flow factors
+    if(smiErgValue > smiErgSignal) score += 5; else score -= 5; factors++;
+    
+    // Trend confirmation
+    if(htTrend && signal == SIGNAL_BUY) score += 5; factors++;
+    if(!htTrend && signal == SIGNAL_SELL) score += 5; factors++;
+    
+    ultScore = MathMax(0, MathMin(100, score));
+    
+    if(signal == SIGNAL_BUY && ultScore < InpUS_MinScore)
+        return false;
+    if(signal == SIGNAL_SELL && ultScore < InpUS_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v12 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV12Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckKAMAFilter(signal))
+        return false;
+    
+    if(!CheckRMIFilter(signal))
+        return false;
+    
+    if(!CheckSMIErgFilter(signal))
+        return false;
+    
+    if(!CheckChopFilter(signal))
+        return false;
+    
+    if(!CheckQQEFilter(signal))
+        return false;
+    
+    if(!CheckSSLFilter(signal))
+        return false;
+    
+    if(!CheckHalfTrendFilter(signal))
+        return false;
+    
+    if(!CheckWaddahFilter(signal))
+        return false;
+    
+    if(!CheckRRFilter(signal))
+        return false;
+    
+    if(!CheckUltScoreFilter(signal))
         return false;
     
     return true;
