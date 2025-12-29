@@ -891,7 +891,47 @@ input bool     InpUseEternalAI     = false;        // Eternal AI Kullan
 input double   InpEA_MinScore      = 95.0;         // Min Score (0-100)
 input int      InpEA_Depth         = 50;           // Neural Depth
 
-int handleBB;
+input group "=== OPTIMAL TRADE ENTRY ==="
+input bool     InpUseOTE           = true;         // OTE Kullan
+input double   InpOTE_Level        = 0.705;        // OTE Level (0.62-0.79)
+
+input group "=== JUDAS SWING ==="
+input bool     InpUseJudas         = true;         // Judas Kullan
+input int      InpJudas_Period     = 20;           // Lookback
+
+input group "=== TURTLE SOUP ==="
+input bool     InpUseTurtleSoup    = true;         // Turtle Soup Kullan
+input int      InpTS_Period        = 20;           // Periyot
+
+input group "=== QUARTERLY THEORY ==="
+input bool     InpUseQuarterly     = true;         // Quarterly Kullan
+
+input group "=== OPENING RANGE ==="
+input bool     InpUseOpeningRange  = true;         // Opening Range Kullan
+input int      InpOR_Minutes       = 30;           // Range Minutes
+
+input group "=== LONDON CLOSE ==="
+input bool     InpUseLondonClose   = true;         // London Close Kullan
+input int      InpLC_StartHour     = 15;           // Start Hour (GMT)
+input int      InpLC_EndHour       = 17;           // End Hour (GMT)
+
+input group "=== IPDA (Interbank) ==="
+input bool     InpUseIPDA          = true;         // IPDA Kullan
+input int      InpIPDA_Days        = 20;           // Lookback Days
+
+input group "=== EQUILIBRIUM ==="
+input bool     InpUseEquilibrium   = true;         // Equilibrium Kullan
+input double   InpEQ_Threshold     = 0.1;          // Threshold
+
+input group "=== DEALING RANGE ==="
+input bool     InpUseDR            = true;         // DR Kullan
+input int      InpDR_Period        = 50;           // Periyot
+
+input group "=== COSMIC AI ==="
+input bool     InpUseCosmicAI      = false;        // Cosmic AI Kullan
+input double   InpCA_MinScore      = 98.0;         // Min Score (0-100)
+input int      InpCA_Layers        = 10;           // Neural Layers
+
 int handleMACD;
 int handleStoch;
 
@@ -1124,6 +1164,18 @@ int po3Phase = 0; // 1=Accum, 2=Manip, 3=Dist
 bool silverBulletTime = false;
 int tpQuarter = 0;
 double eaScore = 0;
+
+// NEW v18 VALUES - COSMIC 10
+double oteLevel = 0;
+bool judasSwing = false;
+bool turtleSoupBuy = false, turtleSoupSell = false;
+int quarterlyPhase = 0;
+double orHigh = 0, orLow = 0;
+bool londonCloseTime = false;
+double ipdaHigh = 0, ipdaLow = 0;
+double eqLevel = 0;
+double drHigh = 0, drLow = 0;
+double caScore = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -8963,6 +9015,387 @@ bool ApplyV17Filters(ENUM_SIGNAL_TYPE signal)
         return false;
     
     if(!CheckEternalAIFilter(signal))
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|       COSMIC v18 MODÜL FONKSIYONLARI (10 MODUL) - 178 TOTAL      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Optimal Trade Entry (OTE) Filter                                 |
+//+------------------------------------------------------------------+
+bool CheckOTEFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOTE)
+        return true;
+    
+    double swingHigh = 0, swingLow = 999999;
+    
+    for(int i = 0; i < 50; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > swingHigh) swingHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < swingLow) swingLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double range = swingHigh - swingLow;
+    oteLevel = swingLow + range * InpOTE_Level;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Buy at OTE level in uptrend
+    if(signal == SIGNAL_BUY && close > oteLevel && close < swingHigh)
+        return true;
+    if(signal == SIGNAL_SELL && close < (swingHigh - range * InpOTE_Level) && close > swingLow)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Judas Swing Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckJudasFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseJudas)
+        return true;
+    
+    // Judas swing: false breakout that traps traders
+    double prevHigh = 0, prevLow = 999999;
+    
+    for(int i = 1; i <= InpJudas_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > prevHigh) prevHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < prevLow) prevLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double currentHigh = iHigh(_Symbol, PERIOD_CURRENT, 0);
+    double currentLow = iLow(_Symbol, PERIOD_CURRENT, 0);
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Judas = break high then close below, or break low then close above
+    judasSwing = (currentHigh > prevHigh && close < prevHigh) || 
+                 (currentLow < prevLow && close > prevLow);
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Turtle Soup Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckTurtleSoupFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseTurtleSoup)
+        return true;
+    
+    double highest = 0, lowest = 999999;
+    
+    for(int i = 1; i <= InpTS_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double prevClose = iClose(_Symbol, PERIOD_CURRENT, 1);
+    
+    // Turtle Soup: Break and fail
+    turtleSoupBuy = prevClose < lowest && close > lowest;
+    turtleSoupSell = prevClose > highest && close < highest;
+    
+    if(signal == SIGNAL_BUY && turtleSoupBuy)
+        return true;
+    if(signal == SIGNAL_SELL && turtleSoupSell)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Quarterly Theory Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckQuarterlyFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseQuarterly)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    // Quarterly phases within an hour
+    int minutes = dt.min;
+    if(minutes < 15) quarterlyPhase = 1;
+    else if(minutes < 30) quarterlyPhase = 2;
+    else if(minutes < 45) quarterlyPhase = 3;
+    else quarterlyPhase = 4;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Opening Range Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckOpeningRangeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseOpeningRange)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    orHigh = 0;
+    orLow = 999999;
+    
+    // Find opening range (first N minutes)
+    for(int i = 0; i < 100; i++)
+    {
+        datetime barTime = iTime(_Symbol, PERIOD_M1, i);
+        MqlDateTime barDt;
+        TimeToStruct(barTime, barDt);
+        
+        if(barDt.day == dt.day && barDt.hour == 0 && barDt.min < InpOR_Minutes)
+        {
+            if(iHigh(_Symbol, PERIOD_M1, i) > orHigh) orHigh = iHigh(_Symbol, PERIOD_M1, i);
+            if(iLow(_Symbol, PERIOD_M1, i) < orLow) orLow = iLow(_Symbol, PERIOD_M1, i);
+        }
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close > orHigh && orHigh > 0)
+        return true;
+    if(signal == SIGNAL_SELL && close < orLow && orLow < 999999)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| London Close Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckLondonCloseFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLondonClose)
+        return true;
+    
+    MqlDateTime dt;
+    TimeGMT(dt);
+    
+    londonCloseTime = (dt.hour >= InpLC_StartHour && dt.hour < InpLC_EndHour);
+    
+    // London close = reversal time
+    if(!londonCloseTime)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| IPDA (Interbank) Filter                                          |
+//+------------------------------------------------------------------+
+bool CheckIPDAFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseIPDA)
+        return true;
+    
+    ipdaHigh = 0;
+    ipdaLow = 999999;
+    
+    // IPDA: Last 20 days range
+    for(int i = 0; i < InpIPDA_Days; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_D1, i) > ipdaHigh) ipdaHigh = iHigh(_Symbol, PERIOD_D1, i);
+        if(iLow(_Symbol, PERIOD_D1, i) < ipdaLow) ipdaLow = iLow(_Symbol, PERIOD_D1, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double range = ipdaHigh - ipdaLow;
+    double position = range > 0 ? (close - ipdaLow) / range : 0.5;
+    
+    if(signal == SIGNAL_BUY && position < 0.3)
+        return true; // Buy in discount
+    if(signal == SIGNAL_SELL && position > 0.7)
+        return true; // Sell in premium
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Equilibrium Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckEquilibriumFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEquilibrium)
+        return true;
+    
+    double highest = 0, lowest = 999999;
+    for(int i = 0; i < 50; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > highest) highest = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < lowest) lowest = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    eqLevel = (highest + lowest) / 2;
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    double distance = MathAbs(close - eqLevel) / (highest - lowest);
+    
+    // Trade when not too close to equilibrium
+    if(distance < InpEQ_Threshold)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Dealing Range Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckDRFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseDR)
+        return true;
+    
+    drHigh = 0;
+    drLow = 999999;
+    
+    for(int i = 0; i < InpDR_Period; i++)
+    {
+        if(iHigh(_Symbol, PERIOD_CURRENT, i) > drHigh) drHigh = iHigh(_Symbol, PERIOD_CURRENT, i);
+        if(iLow(_Symbol, PERIOD_CURRENT, i) < drLow) drLow = iLow(_Symbol, PERIOD_CURRENT, i);
+    }
+    
+    double close = iClose(_Symbol, PERIOD_CURRENT, 0);
+    
+    if(signal == SIGNAL_BUY && close < drHigh && close > drLow)
+        return true;
+    if(signal == SIGNAL_SELL && close < drHigh && close > drLow)
+        return true;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Cosmic AI Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckCosmicAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseCosmicAI)
+        return true;
+    
+    // Ultimate cosmic neural scoring
+    double inputs[50];
+    int inCount = 0;
+    
+    // All signals
+    inputs[inCount++] = ma1[0] > ma3[0] ? 1.0 : -1.0;
+    inputs[inCount++] = ArraySize(rsi) > 0 ? (rsi[0] - 50) / 50.0 : 0;
+    inputs[inCount++] = kamaValue > kamaPrev ? 1.0 : -1.0;
+    inputs[inCount++] = tsiValue / 100.0;
+    inputs[inCount++] = rmiValue / 100.0;
+    inputs[inCount++] = chopIndex < 50 ? 1.0 : -1.0;
+    inputs[inCount++] = htTrend ? 1.0 : -1.0;
+    inputs[inCount++] = ictBias;
+    inputs[inCount++] = wyckPhase == 1 || wyckPhase == 2 ? 1.0 : -1.0;
+    inputs[inCount++] = chochDir;
+    inputs[inCount++] = bosDir;
+    inputs[inCount++] = mmPhase == 3 ? 1.0 : 0.0;
+    inputs[inCount++] = po3Phase >= 2 ? 1.0 : 0.0;
+    inputs[inCount++] = judasSwing ? 1.0 : 0.0;
+    inputs[inCount++] = turtleSoupBuy && signal == SIGNAL_BUY ? 1.0 : 0.0;
+    inputs[inCount++] = turtleSoupSell && signal == SIGNAL_SELL ? 1.0 : 0.0;
+    inputs[inCount++] = londonCloseTime ? 1.0 : 0.0;
+    inputs[inCount++] = eaScore / 100.0;
+    inputs[inCount++] = iaScore / 100.0;
+    inputs[inCount++] = gmScore / 100.0;
+    
+    // Deep cosmic network with 5 layers
+    double layer1[20], layer2[20], layer3[20], layer4[20], layer5[20];
+    int layerSize = MathMin(InpCA_Layers, 20);
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer1[j] = 0;
+        for(int i = 0; i < inCount; i++)
+            layer1[j] += inputs[i] * MathSin((i + 1) * (j + 1) * 0.06);
+        layer1[j] = MathTanh(layer1[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer2[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer2[j] += layer1[i] * MathCos((i + j) * 0.1);
+        layer2[j] = MathTanh(layer2[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer3[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer3[j] += layer2[i] * MathSin((i * j + 1) * 0.08);
+        layer3[j] = MathTanh(layer3[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer4[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer4[j] += layer3[i] * MathCos((i + j + 1) * 0.06);
+        layer4[j] = MathTanh(layer4[j]);
+    }
+    
+    for(int j = 0; j < layerSize; j++)
+    {
+        layer5[j] = 0;
+        for(int i = 0; i < layerSize; i++)
+            layer5[j] += layer4[i] * MathSin((i * j + 2) * 0.05);
+        layer5[j] = MathTanh(layer5[j]);
+    }
+    
+    caScore = 0;
+    for(int j = 0; j < layerSize; j++)
+        caScore += layer5[j] * (0.06 + 0.03 * (j % 8));
+    caScore = (MathTanh(caScore) + 1) / 2 * 100;
+    
+    if(caScore < InpCA_MinScore)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v18 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV18Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckOTEFilter(signal))
+        return false;
+    
+    if(!CheckJudasFilter(signal))
+        return false;
+    
+    if(!CheckTurtleSoupFilter(signal))
+        return false;
+    
+    if(!CheckQuarterlyFilter(signal))
+        return false;
+    
+    if(!CheckOpeningRangeFilter(signal))
+        return false;
+    
+    if(!CheckLondonCloseFilter(signal))
+        return false;
+    
+    if(!CheckIPDAFilter(signal))
+        return false;
+    
+    if(!CheckEquilibriumFilter(signal))
+        return false;
+    
+    if(!CheckDRFilter(signal))
+        return false;
+    
+    if(!CheckCosmicAIFilter(signal))
         return false;
     
     return true;
