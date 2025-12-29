@@ -62,6 +62,53 @@ input bool     InpShowPanel        = true;         // Panel Göster
 input bool     InpShowSignals      = true;         // Sinyal Göster
 input bool     InpEnableAlerts     = true;         // Alarm Etkin
 
+input group "=== RSI FİLTRESİ ==="
+input bool     InpUseRSI           = true;         // RSI Filtresi Kullan
+input int      InpRSI_Period       = 14;           // RSI Periyodu
+input int      InpRSI_Overbought   = 70;           // Aşırı Alım Seviyesi
+input int      InpRSI_Oversold     = 30;           // Aşırı Satım Seviyesi
+input bool     InpRSI_Confirmation = true;         // RSI Yön Doğrulaması
+
+input group "=== VOLUME FİLTRESİ ==="
+input bool     InpUseVolume        = true;         // Volume Filtresi Kullan
+input int      InpVolume_Period    = 20;           // Volume MA Periyodu
+input double   InpVolume_Multiplier = 1.5;         // Min Volume Çarpanı
+
+input group "=== SESSION FİLTRESİ ==="
+input bool     InpUseSession       = true;         // Session Filtresi Kullan
+input int      InpSession_StartHour = 8;           // Başlangıç Saati (Server)
+input int      InpSession_EndHour   = 20;          // Bitiş Saati (Server)
+input bool     InpTradeFriday      = true;         // Cuma İşlem Yap
+input int      InpFridayCloseHour  = 18;           // Cuma Kapanış Saati
+
+input group "=== NEWS FİLTRESİ ==="
+input bool     InpUseNews          = false;        // News Filtresi Kullan (Manuel)
+input int      InpNewsMinutesBefore = 30;          // Haber Öncesi Bekle (dk)
+input int      InpNewsMinutesAfter  = 15;          // Haber Sonrası Bekle (dk)
+
+input group "=== MARTİNGALE ==="
+input bool     InpUseMartingale    = false;        // Martingale Kullan
+input bool     InpAntiMartingale   = false;        // Anti-Martingale (Kazançta artır)
+input double   InpMartingaleMultiplier = 2.0;      // Lot Çarpanı
+input int      InpMartingaleMaxLevel = 3;          // Max Martingale Seviyesi
+
+input group "=== MULTI-TIMEFRAME ==="
+input bool     InpUseMTF           = true;         // Multi-Timeframe Kullan
+input ENUM_TIMEFRAMES InpMTF_Higher = PERIOD_H4;   // Üst Zaman Dilimi
+input bool     InpMTF_TrendFilter  = true;         // Trend Filtresi (Üst TF)
+
+input group "=== HEDGE MODU ==="
+input bool     InpUseHedge         = false;        // Hedge Modu Kullan
+input double   InpHedgeLossPercent = 1.0;          // Hedge Tetikleme Kaybı (%)
+input double   InpHedgeLotRatio    = 0.5;          // Hedge Lot Oranı
+
+input group "=== PARTIAL CLOSE ==="
+input bool     InpUsePartialClose  = true;         // Kısmi Kapanış Kullan
+input double   InpPartial1_Percent = 50.0;         // 1. Kapanış Yüzdesi
+input double   InpPartial1_ATRMult = 1.0;          // 1. Kapanış ATR Çarpanı
+input double   InpPartial2_Percent = 30.0;         // 2. Kapanış Yüzdesi
+input double   InpPartial2_ATRMult = 1.5;          // 2. Kapanış ATR Çarpanı
+
 //+------------------------------------------------------------------+
 //| GLOBAL VARIABLES                                                  |
 //+------------------------------------------------------------------+
@@ -73,9 +120,19 @@ COrderInfo     orderInfo;
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
 int handleATR;
 
+// New module handles
+int handleRSI;
+int handleVolume;
+int handleMTF_MA1, handleMTF_MA5;
+
 // MA Values
 double ma1[], ma2[], ma3[], ma4[], ma5[];
 double atr[];
+
+// New module values
+double rsi[];
+double volume[], volumeMA[];
+double mtf_ma1[], mtf_ma5[];
 
 // Statistics
 double dailyProfit = 0;
@@ -88,6 +145,19 @@ int lossTrades = 0;
 // Signal tracking
 ENUM_SIGNAL_TYPE lastSignal = SIGNAL_NONE;
 datetime lastSignalTime = 0;
+
+// Martingale tracking
+int consecutiveLosses = 0;
+int consecutiveWins = 0;
+int martingaleLevel = 0;
+double lastLotSize = 0;
+
+// Partial close tracking
+datetime lastPartialClose1[];
+datetime lastPartialClose2[];
+
+// News filter (manual input via global variable)
+datetime newsEventTime = 0;
 
 // Chart objects
 string panelName = "MA5_Panel";
@@ -114,6 +184,22 @@ int OnInit()
     handleMA5 = iMA(_Symbol, PERIOD_CURRENT, InpMA5_Period, 0, maMethod, InpMA_Price);
     handleATR = iATR(_Symbol, PERIOD_CURRENT, InpATR_Period);
     
+    // NEW MODULE INDICATORS
+    // RSI
+    if(InpUseRSI)
+        handleRSI = iRSI(_Symbol, PERIOD_CURRENT, InpRSI_Period, PRICE_CLOSE);
+    
+    // Volume
+    if(InpUseVolume)
+        handleVolume = iMA(_Symbol, PERIOD_CURRENT, InpVolume_Period, 0, MODE_SMA, VOLUME_TICK);
+    
+    // Multi-Timeframe
+    if(InpUseMTF)
+    {
+        handleMTF_MA1 = iMA(_Symbol, InpMTF_Higher, InpMA1_Period, 0, maMethod, InpMA_Price);
+        handleMTF_MA5 = iMA(_Symbol, InpMTF_Higher, InpMA5_Period, 0, maMethod, InpMA_Price);
+    }
+    
     if(handleMA1 == INVALID_HANDLE || handleMA2 == INVALID_HANDLE || 
        handleMA3 == INVALID_HANDLE || handleMA4 == INVALID_HANDLE || 
        handleMA5 == INVALID_HANDLE || handleATR == INVALID_HANDLE)
@@ -129,6 +215,11 @@ int OnInit()
     ArraySetAsSeries(ma4, true);
     ArraySetAsSeries(ma5, true);
     ArraySetAsSeries(atr, true);
+    ArraySetAsSeries(rsi, true);
+    ArraySetAsSeries(volume, true);
+    ArraySetAsSeries(volumeMA, true);
+    ArraySetAsSeries(mtf_ma1, true);
+    ArraySetAsSeries(mtf_ma5, true);
     
     // Initialize daily tracking
     dailyStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -138,8 +229,10 @@ int OnInit()
     if(InpShowPanel)
         CreatePanel();
     
-    Print("✅ MA5 CrossOver ATR EA başlatıldı");
+    Print("✅ MA5 CrossOver ATR EA v2.0 başlatıldı");
     Print("📊 Hedef: $", InpStartBalance, " -> $", InpTargetBalance);
+    Print("🔧 Modüller: RSI=", InpUseRSI, " Vol=", InpUseVolume, " MTF=", InpUseMTF, 
+          " Session=", InpUseSession, " Hedge=", InpUseHedge, " Partial=", InpUsePartialClose);
     
     return INIT_SUCCEEDED;
 }
@@ -180,6 +273,10 @@ void OnTick()
     if(CheckTargetReached())
         return;
     
+    // Session filter - don't trade outside hours
+    if(!CheckSessionFilter())
+        return;
+    
     // Update indicators
     if(!UpdateIndicators())
         return;
@@ -187,10 +284,14 @@ void OnTick()
     // Get signal
     ENUM_SIGNAL_TYPE signal = GetSignal();
     
-    // Process signal
+    // Process signal with all filters
     if(signal != SIGNAL_NONE)
     {
-        ProcessSignal(signal);
+        // Apply all module filters
+        if(ApplyAllFilters(signal))
+        {
+            ProcessSignal(signal);
+        }
     }
     
     // Manage open positions
@@ -198,6 +299,13 @@ void OnTick()
     
     // Check pending orders expiry
     CheckPendingOrders();
+    
+    // NEW MODULE MANAGEMENT
+    // Hedge management
+    CheckHedgeManagement();
+    
+    // Partial close management
+    CheckPartialClose();
     
     // Update panel
     if(InpShowPanel)
@@ -1058,5 +1166,419 @@ void DrawTargetReached(double balance)
     ObjectSetString(0, name + "_Congrats", OBJPROP_TEXT, "TEBRİKLER! $1,000,000 HEDEFİNE ULAŞTINIZ!");
     ObjectSetInteger(0, name + "_Congrats", OBJPROP_COLOR, clrWhite);
     ObjectSetInteger(0, name + "_Congrats", OBJPROP_FONTSIZE, 14);
+}
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//|                    YENI MODÜLLER                                  |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| RSI Filter - Check if RSI allows trading                         |
+//+------------------------------------------------------------------+
+bool CheckRSIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseRSI)
+        return true;
+    
+    if(CopyBuffer(handleRSI, 0, 0, 3, rsi) < 3)
+        return true;
+    
+    double rsiValue = rsi[0];
+    
+    if(signal == SIGNAL_BUY)
+    {
+        // For BUY: RSI should not be overbought
+        if(rsiValue > InpRSI_Overbought)
+            return false;
+        
+        // RSI confirmation: RSI should be rising
+        if(InpRSI_Confirmation && rsi[0] < rsi[1])
+            return false;
+    }
+    else if(signal == SIGNAL_SELL)
+    {
+        // For SELL: RSI should not be oversold
+        if(rsiValue < InpRSI_Oversold)
+            return false;
+        
+        // RSI confirmation: RSI should be falling
+        if(InpRSI_Confirmation && rsi[0] > rsi[1])
+            return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Volume Filter - Check if volume is sufficient                    |
+//+------------------------------------------------------------------+
+bool CheckVolumeFilter()
+{
+    if(!InpUseVolume)
+        return true;
+    
+    // Get current volume
+    long currentVolume = iVolume(_Symbol, PERIOD_CURRENT, 0);
+    
+    // Get average volume
+    if(CopyBuffer(handleVolume, 0, 0, 1, volumeMA) < 1)
+        return true;
+    
+    double avgVolume = volumeMA[0];
+    
+    // Volume should be higher than average * multiplier
+    return currentVolume >= avgVolume * InpVolume_Multiplier;
+}
+
+//+------------------------------------------------------------------+
+//| Session Filter - Check if current time is within trading hours   |
+//+------------------------------------------------------------------+
+bool CheckSessionFilter()
+{
+    if(!InpUseSession)
+        return true;
+    
+    MqlDateTime dt;
+    TimeCurrent(dt);
+    
+    int hour = dt.hour;
+    int dayOfWeek = dt.day_of_week;
+    
+    // Weekend check (Saturday=6, Sunday=0)
+    if(dayOfWeek == 0 || dayOfWeek == 6)
+        return false;
+    
+    // Friday special handling
+    if(dayOfWeek == 5)
+    {
+        if(!InpTradeFriday)
+            return false;
+        if(hour >= InpFridayCloseHour)
+            return false;
+    }
+    
+    // Regular session hours
+    if(hour < InpSession_StartHour || hour >= InpSession_EndHour)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| News Filter - Check if there's upcoming news                     |
+//+------------------------------------------------------------------+
+bool CheckNewsFilter()
+{
+    if(!InpUseNews)
+        return true;
+    
+    if(newsEventTime == 0)
+        return true;
+    
+    datetime now = TimeCurrent();
+    int minutesToNews = (int)((newsEventTime - now) / 60);
+    int minutesAfterNews = (int)((now - newsEventTime) / 60);
+    
+    // Before news
+    if(minutesToNews >= 0 && minutesToNews <= InpNewsMinutesBefore)
+        return false;
+    
+    // After news
+    if(minutesAfterNews >= 0 && minutesAfterNews <= InpNewsMinutesAfter)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Multi-Timeframe Filter - Check higher TF trend                   |
+//+------------------------------------------------------------------+
+bool CheckMTFFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseMTF || !InpMTF_TrendFilter)
+        return true;
+    
+    if(CopyBuffer(handleMTF_MA1, 0, 0, 1, mtf_ma1) < 1)
+        return true;
+    if(CopyBuffer(handleMTF_MA5, 0, 0, 1, mtf_ma5) < 1)
+        return true;
+    
+    bool htfUptrend = mtf_ma1[0] > mtf_ma5[0];
+    
+    if(signal == SIGNAL_BUY && !htfUptrend)
+        return false;
+    if(signal == SIGNAL_SELL && htfUptrend)
+        return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Martingale Lot Size                                    |
+//+------------------------------------------------------------------+
+double CalculateMartingaleLot(double baseLot)
+{
+    if(!InpUseMartingale && !InpAntiMartingale)
+        return baseLot;
+    
+    double lot = baseLot;
+    
+    if(InpUseMartingale)
+    {
+        // Classic Martingale: double after loss
+        if(consecutiveLosses > 0 && martingaleLevel < InpMartingaleMaxLevel)
+        {
+            lot = baseLot * MathPow(InpMartingaleMultiplier, martingaleLevel);
+        }
+    }
+    else if(InpAntiMartingale)
+    {
+        // Anti-Martingale: increase after win, reset after loss
+        if(consecutiveWins > 0 && martingaleLevel < InpMartingaleMaxLevel)
+        {
+            lot = baseLot * MathPow(InpMartingaleMultiplier, martingaleLevel);
+        }
+    }
+    
+    // Normalize lot
+    double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+    double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+    
+    lot = MathMax(minLot, MathMin(maxLot, lot));
+    lot = MathMax(InpMinLot, MathMin(InpMaxLot, lot));
+    lot = NormalizeDouble(MathFloor(lot / lotStep) * lotStep, 2);
+    
+    lastLotSize = lot;
+    return lot;
+}
+
+//+------------------------------------------------------------------+
+//| Update Martingale Level after trade close                        |
+//+------------------------------------------------------------------+
+void UpdateMartingaleLevel(bool isWin)
+{
+    if(!InpUseMartingale && !InpAntiMartingale)
+        return;
+    
+    if(isWin)
+    {
+        winTrades++;
+        consecutiveWins++;
+        consecutiveLosses = 0;
+        
+        if(InpUseMartingale)
+            martingaleLevel = 0; // Reset on win
+        else if(InpAntiMartingale)
+            martingaleLevel = MathMin(martingaleLevel + 1, InpMartingaleMaxLevel);
+    }
+    else
+    {
+        lossTrades++;
+        consecutiveLosses++;
+        consecutiveWins = 0;
+        
+        if(InpUseMartingale)
+            martingaleLevel = MathMin(martingaleLevel + 1, InpMartingaleMaxLevel);
+        else if(InpAntiMartingale)
+            martingaleLevel = 0; // Reset on loss
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Hedge Management - Open opposite position if needed              |
+//+------------------------------------------------------------------+
+void CheckHedgeManagement()
+{
+    if(!InpUseHedge)
+        return;
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!posInfo.SelectByIndex(i))
+            continue;
+        
+        if(posInfo.Symbol() != _Symbol || posInfo.Magic() != InpMagicNumber)
+            continue;
+        
+        double profit = posInfo.Profit();
+        double lotSize = posInfo.Volume();
+        double lossPercent = MathAbs(profit) / AccountInfoDouble(ACCOUNT_BALANCE) * 100;
+        
+        // Check if loss exceeds threshold
+        if(profit < 0 && lossPercent >= InpHedgeLossPercent)
+        {
+            // Check if hedge position already exists
+            bool hasHedge = false;
+            ENUM_POSITION_TYPE posType = posInfo.PositionType();
+            
+            for(int j = PositionsTotal() - 1; j >= 0; j--)
+            {
+                CPositionInfo tempPos;
+                if(tempPos.SelectByIndex(j))
+                {
+                    if(tempPos.Symbol() == _Symbol && 
+                       tempPos.Magic() == InpMagicNumber &&
+                       tempPos.PositionType() != posType &&
+                       tempPos.Comment() == "HEDGE")
+                    {
+                        hasHedge = true;
+                        break;
+                    }
+                }
+            }
+            
+            if(!hasHedge)
+            {
+                // Open hedge position
+                double hedgeLot = NormalizeDouble(lotSize * InpHedgeLotRatio, 2);
+                hedgeLot = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), hedgeLot);
+                
+                ENUM_ORDER_TYPE hedgeType = posType == POSITION_TYPE_BUY ? 
+                                           ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+                double hedgePrice = hedgeType == ORDER_TYPE_BUY ?
+                                   SymbolInfoDouble(_Symbol, SYMBOL_ASK) :
+                                   SymbolInfoDouble(_Symbol, SYMBOL_BID);
+                
+                if(trade.PositionOpen(_Symbol, hedgeType, hedgeLot, hedgePrice, 0, 0, "HEDGE"))
+                {
+                    Print("🛡️ Hedge açıldı: ", EnumToString(hedgeType), " Lot: ", hedgeLot);
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Partial Close - Take partial profits                             |
+//+------------------------------------------------------------------+
+void CheckPartialClose()
+{
+    if(!InpUsePartialClose)
+        return;
+    
+    double atrValue = atr[0];
+    
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!posInfo.SelectByIndex(i))
+            continue;
+        
+        if(posInfo.Symbol() != _Symbol || posInfo.Magic() != InpMagicNumber)
+            continue;
+        
+        ulong ticket = posInfo.Ticket();
+        double openPrice = posInfo.PriceOpen();
+        double currentPrice;
+        double lotSize = posInfo.Volume();
+        double profit;
+        
+        if(posInfo.PositionType() == POSITION_TYPE_BUY)
+        {
+            currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            profit = currentPrice - openPrice;
+        }
+        else
+        {
+            currentPrice = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            profit = openPrice - currentPrice;
+        }
+        
+        // First partial close at ATR * Mult1
+        double partial1Target = atrValue * InpPartial1_ATRMult;
+        if(profit >= partial1Target)
+        {
+            // Check if already done
+            bool alreadyClosed = false;
+            for(int j = ArraySize(lastPartialClose1) - 1; j >= 0; j--)
+            {
+                if(lastPartialClose1[j] == (datetime)ticket)
+                {
+                    alreadyClosed = true;
+                    break;
+                }
+            }
+            
+            if(!alreadyClosed)
+            {
+                double closeVolume = NormalizeDouble(lotSize * InpPartial1_Percent / 100.0, 2);
+                closeVolume = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), closeVolume);
+                
+                if(trade.PositionClosePartial(ticket, closeVolume))
+                {
+                    ArrayResize(lastPartialClose1, ArraySize(lastPartialClose1) + 1);
+                    lastPartialClose1[ArraySize(lastPartialClose1) - 1] = (datetime)ticket;
+                    Print("💰 Kısmi kar alındı (1): Ticket ", ticket, " Volume: ", closeVolume);
+                }
+            }
+        }
+        
+        // Second partial close at ATR * Mult2
+        double partial2Target = atrValue * InpPartial2_ATRMult;
+        if(profit >= partial2Target)
+        {
+            bool alreadyClosed = false;
+            for(int j = ArraySize(lastPartialClose2) - 1; j >= 0; j--)
+            {
+                if(lastPartialClose2[j] == (datetime)ticket)
+                {
+                    alreadyClosed = true;
+                    break;
+                }
+            }
+            
+            if(!alreadyClosed)
+            {
+                double closeVolume = NormalizeDouble(lotSize * InpPartial2_Percent / 100.0, 2);
+                closeVolume = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), closeVolume);
+                
+                if(trade.PositionClosePartial(ticket, closeVolume))
+                {
+                    ArrayResize(lastPartialClose2, ArraySize(lastPartialClose2) + 1);
+                    lastPartialClose2[ArraySize(lastPartialClose2) - 1] = (datetime)ticket;
+                    Print("💰 Kısmi kar alındı (2): Ticket ", ticket, " Volume: ", closeVolume);
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Apply All Filters to Signal                                      |
+//+------------------------------------------------------------------+
+bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckRSIFilter(signal))
+    {
+        Print("⚠️ RSI filtresi sinyali engelledi");
+        return false;
+    }
+    
+    if(!CheckVolumeFilter())
+    {
+        Print("⚠️ Volume filtresi sinyali engelledi");
+        return false;
+    }
+    
+    if(!CheckSessionFilter())
+    {
+        Print("⚠️ Session filtresi sinyali engelledi");
+        return false;
+    }
+    
+    if(!CheckNewsFilter())
+    {
+        Print("⚠️ News filtresi sinyali engelledi");
+        return false;
+    }
+    
+    if(!CheckMTFFilter(signal))
+    {
+        Print("⚠️ MTF filtresi sinyali engelledi");
+        return false;
+    }
+    
+    return true;
 }
 //+------------------------------------------------------------------+
