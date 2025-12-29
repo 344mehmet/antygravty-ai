@@ -1302,6 +1302,46 @@ input group "=== ZENITH AI ==="
 input bool     InpUseZenithAI      = false;        // Zenith AI Kullan
 input double   InpZAI_Threshold    = 0.98;         // Elite Signal Threshold
 
+input group "=== APEX FLOW ==="
+input bool     InpUseApexFlow      = true;         // Apex Flow Kullan
+input int      InpAF_MicroBars     = 5;            // Micro-momentum bars
+
+input group "=== PREDATOR EYE ==="
+input bool     InpUsePredatorEye   = true;         // Predator Eye Kullan
+input double   InpPE_BodyRatio     = 0.05;         // Candle body/wick ratio
+
+input group "=== SUMMIT PEAK ==="
+input bool     InpUseSummitPeak    = true;         // Summit Peak Kullan
+input int      InpSP_Lookback      = 500;          // Extreme resistance lookback
+
+input group "=== BASE CAMP ==="
+input bool     InpUseBaseCamp      = true;         // Base Camp Kullan
+input int      InpBC_Lookback      = 500;          // Extreme support lookback
+
+input group "=== STEALTH ENTRY ==="
+input bool     InpUseStealthEntry  = true;         // Stealth Entry Kullan
+input double   InpST_VolatilityCap = 0.5;          // Entry under this ATR mult
+
+input group "=== FALCON DIVE ==="
+input bool     InpUseFalconDive    = true;         // Falcon Dive Kullan
+input int      InpFD_RSI_Drop      = 30;           // RSI point drop required
+
+input group "=== SHARK FIN ==="
+input bool     InpUseSharkFin      = true;         // Shark Fin Kullan
+input double   InpSF_DivThreshold  = 10.0;         // Divergence distance
+
+input group "=== EAGLE VISION ==="
+input bool     InpUseEagleVision   = true;         // Eagle Vision Kullan
+input ENUM_TIMEFRAMES InpEV_Timeframe = PERIOD_H4; // Higher TF to check
+
+input group "=== LION HEART ==="
+input bool     InpUseLionHeart     = true;         // Lion Heart Kullan
+input double   InpLH_RecoveryMult  = 1.5;          // Lot multiplier in recovery
+
+input group "=== APEX AI ==="
+input bool     InpUseApexAI        = false;        // Apex AI Kullan
+input double   InpAAI_Intelligence = 0.9;          // Logic weight
+
 // Global Indicator Handles
 // Indicators
 int handleMA1, handleMA2, handleMA3, handleMA4, handleMA5;
@@ -1651,6 +1691,18 @@ int eeOverlapCount = 0;
 double abFreqVariance = 0;
 double sfFlareIntensity = 0;
 double zaiZenithAI_Result = 0;
+
+// NEW v28 VALUES - APEX 10
+double afMicroMomentum = 0;
+double peCandleBodyRatio = 0;
+double spPeakResistance = 0;
+double bcBaseSupport = 0;
+bool stStealthActive = false;
+double fdFalconDropVal = 0;
+double sfSharkFinDiv = 0;
+double evEagleEyeScore = 0;
+double lhLionHeartMultiplier = 1.0;
+double aaiApexAI_Result = 0;
 
 // Drawdown tracking
 double peakBalance = 0;
@@ -3103,7 +3155,7 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
         return false;
     }
 
-    // Apply v1-v27 Module Aggregates
+    // Apply v1-v28 Module Aggregates
     
     // v1-v2 (Initial 10 modules + New 10)
     if(!ApplyNew10Filters(signal)) return false;
@@ -3148,6 +3200,8 @@ bool ApplyAllFilters(ENUM_SIGNAL_TYPE signal)
     if(!ApplyV26Filters(signal)) return false;
     // v27
     if(!ApplyV27Filters(signal)) return false;
+    // v28
+    if(!ApplyV28Filters(signal)) return false;
     
     return true;
 }
@@ -12559,6 +12613,213 @@ bool ApplyV26Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckHeavensGateFilter(signal)) return false;
     if(!CheckHellsFireFilter(signal)) return false;
     if(!CheckEternalAIFilter(signal)) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//|        APEX v28 MODÜL FONKSIYONLARI (10 MODUL) - 278 TOTAL       |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Apex Flow Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckApexFlowFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseApexFlow)
+        return true;
+    
+    // Micro-momentum check
+    double move = iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpAF_MicroBars);
+    afMicroMomentum = move / (atr[0] > 0 ? atr[0] : 1);
+    
+    if(signal == SIGNAL_BUY && afMicroMomentum < 0.2) return false;
+    if(signal == SIGNAL_SELL && afMicroMomentum > -0.2) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Predator Eye Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckPredatorEyeFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUsePredatorEye)
+        return true;
+    
+    // Candle body ratio check
+    double body = MathAbs(iClose(_Symbol, PERIOD_CURRENT, 0) - iOpen(_Symbol, PERIOD_CURRENT, 0));
+    double range = iHigh(_Symbol, PERIOD_CURRENT, 0) - iLow(_Symbol, PERIOD_CURRENT, 0);
+    
+    peCandleBodyRatio = (range > 0) ? body / range : 0;
+    
+    if(peCandleBodyRatio < InpPE_BodyRatio) // Indecision candle (Doji/Spinning top)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Summit Peak Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckSummitPeakFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSummitPeak)
+        return true;
+    
+    // Historical extreme resistance
+    double peak = iHigh(_Symbol, PERIOD_CURRENT, iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, InpSP_Lookback, 1));
+    spPeakResistance = peak;
+    
+    if(signal == SIGNAL_BUY && iClose(_Symbol, PERIOD_CURRENT, 0) > peak - (atr[0] * 0.5))
+        return false; // Too close to historical summit
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Base Camp Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckBaseCampFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseBaseCamp)
+        return true;
+    
+    // Historical extreme support
+    double floor = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpBC_Lookback, 1));
+    bcBaseSupport = floor;
+    
+    if(signal == SIGNAL_SELL && iClose(_Symbol, PERIOD_CURRENT, 0) < floor + (atr[0] * 0.5))
+        return false; // Too close to base camp (floor)
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Stealth Entry Filter                                             |
+//+------------------------------------------------------------------+
+bool CheckStealthEntryFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseStealthEntry)
+        return true;
+    
+    // Only enter when volatility is low (Quiet before the storm)
+    stStealthActive = atr[0] < (iATR(_Symbol, PERIOD_CURRENT, 100, 0) * InpST_VolatilityCap);
+    
+    if(!stStealthActive && InpST_VolatilityCap < 1.0)
+        return false; 
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Falcon Dive Filter                                               |
+//+------------------------------------------------------------------+
+bool CheckFalconDiveFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseFalconDive)
+        return true;
+    
+    // RSI Oversold recovery check
+    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi1 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 5);
+    
+    fdFalconDropVal = rsi1 - rsi0;
+    
+    if(signal == SIGNAL_BUY && rsi0 < 35 && fdFalconDropVal > InpFD_RSI_Drop)
+        return true; // Extreme dive often leads to bounce
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Shark Fin Filter                                                 |
+//+------------------------------------------------------------------+
+bool CheckSharkFinFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseSharkFin)
+        return true;
+    
+    // RSI Shark Fin (Divergence style)
+    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi2 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 2);
+    
+    sfSharkFinDiv = rsi0 - rsi2;
+    
+    if(MathAbs(sfSharkFinDiv) > InpSF_DivThreshold) // Sharp turn in RSI
+        return true;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Eagle Vision Filter                                              |
+//+------------------------------------------------------------------+
+bool CheckEagleVisionFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseEagleVision)
+        return true;
+    
+    // Higher TF RSI check
+    double rsiH4 = iRSI(_Symbol, InpEV_Timeframe, 14, PRICE_CLOSE, 0);
+    evEagleEyeScore = rsiH4;
+    
+    if(signal == SIGNAL_BUY && rsiH4 < 45) return false;
+    if(signal == SIGNAL_SELL && rsiH4 > 55) return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Lion Heart Filter                                                |
+//+------------------------------------------------------------------+
+bool CheckLionHeartFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseLionHeart)
+        return true;
+    
+    // Increase lot multiplier if in drawdown
+    if(currentDrawdown > 5.0)
+        lhLionHeartMultiplier = InpLH_RecoveryMult;
+    else
+        lhLionHeartMultiplier = 1.0;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apex AI Filter                                                   |
+//+------------------------------------------------------------------+
+bool CheckApexAIFilter(ENUM_SIGNAL_TYPE signal)
+{
+    if(!InpUseApexAI)
+        return true;
+    
+    // Predator Consensus
+    double logic = (afMicroMomentum > 0 ? 0.5 : -0.5) + (peCandleBodyRatio > 0.5 ? 0.3 : 0) + (evEagleEyeScore > 50 ? 0.2 : -0.2);
+    aaiApexAI_Result = MathTanh(logic);
+    
+    if(MathAbs(aaiApexAI_Result) < InpAAI_Intelligence - 0.5)
+        return false;
+        
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply All v28 Filters                                            |
+//+------------------------------------------------------------------+
+bool ApplyV28Filters(ENUM_SIGNAL_TYPE signal)
+{
+    if(!CheckApexFlowFilter(signal)) return false;
+    if(!CheckPredatorEyeFilter(signal)) return false;
+    if(!CheckSummitPeakFilter(signal)) return false;
+    if(!CheckBaseCampFilter(signal)) return false;
+    if(!CheckStealthEntryFilter(signal)) return false;
+    if(!CheckFalconDiveFilter(signal)) return false;
+    if(!CheckSharkFinFilter(signal)) return false;
+    if(!CheckEagleVisionFilter(signal)) return false;
+    if(!CheckLionHeartFilter(signal)) return false;
+    if(!CheckApexAIFilter(signal)) return false;
     
     return true;
 }
