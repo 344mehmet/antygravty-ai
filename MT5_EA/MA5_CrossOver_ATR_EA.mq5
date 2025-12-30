@@ -11897,8 +11897,7 @@ bool ApplyV23Filters(ENUM_SIGNAL_TYPE signal)
     return true;
 }
 //+------------------------------------------------------------------+
-    return true;
-}
+
 
 //+------------------------------------------------------------------+
 //|      INFINITY v24 MODÜL FONKSIYONLARI (10 MODUL) - 238 TOTAL     |
@@ -13470,7 +13469,7 @@ bool ApplyV30Filters(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Infinite Loop II Filter                                          |
 //+------------------------------------------------------------------+
-bool CheckInfiniteLoop2Filter(ENUM_SIGNAL_TYPE signal)
+bool CheckInfiniteLoop2V31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseInfLoop2)
         return true;
@@ -13493,7 +13492,7 @@ bool CheckInfiniteLoop2Filter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Quantum State II Filter                                          |
 //+------------------------------------------------------------------+
-bool CheckQuantumState2Filter(ENUM_SIGNAL_TYPE signal)
+bool CheckQuantumState2V31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseQuantumState2)
         return true;
@@ -13513,7 +13512,7 @@ bool CheckQuantumState2Filter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Grand Master Logic Filter                                        |
 //+------------------------------------------------------------------+
-bool CheckGrandMasterLogicFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckGrandMasterLogicV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseGrandMasterLogic)
         return true;
@@ -13530,7 +13529,7 @@ bool CheckGrandMasterLogicFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Absolute Zero Filter                                             |
 //+------------------------------------------------------------------+
-bool CheckAbsoluteZeroFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckAbsoluteZeroV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseAbsoluteZero)
         return true;
@@ -13548,7 +13547,7 @@ bool CheckAbsoluteZeroFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Omega Signal Filter                                              |
 //+------------------------------------------------------------------+
-bool CheckOmegaSignalFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckOmegaSignalV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseOmegaSignal)
         return true;
@@ -13566,7 +13565,7 @@ bool CheckOmegaSignalFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Alpha Entry Filter                                               |
 //+------------------------------------------------------------------+
-bool CheckAlphaEntryFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckAlphaEntryV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseAlphaEntry)
         return true;
@@ -13585,7 +13584,7 @@ bool CheckAlphaEntryFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Singularity AI Filter                                            |
 //+------------------------------------------------------------------+
-bool CheckSingularityFinalFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckSingularityFinalV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseSingularityFinal)
         return true;
@@ -13603,7 +13602,7 @@ bool CheckSingularityFinalFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Event Horizon II Filter                                          |
 //+------------------------------------------------------------------+
-bool CheckEventHorizon2Filter(ENUM_SIGNAL_TYPE signal)
+bool CheckEventHorizon2V31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseEventHorizon2)
         return true;
@@ -13621,7 +13620,7 @@ bool CheckEventHorizon2Filter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Nebula Core II Filter                                            |
 //+------------------------------------------------------------------+
-bool CheckNebulaCore2Filter(ENUM_SIGNAL_TYPE signal)
+bool CheckNebulaCore2V31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseNebulaCore2)
         return true;
@@ -13641,7 +13640,7 @@ bool CheckNebulaCore2Filter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| The One Filter                                                   |
 //+------------------------------------------------------------------+
-bool CheckTheOneFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckTheOneV31Filter(ENUM_SIGNAL_TYPE signal)
 {
     if(!InpUseTheOne)
         return true;
@@ -13660,16 +13659,16 @@ bool CheckTheOneFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 bool ApplyV31Filters(ENUM_SIGNAL_TYPE signal)
 {
-    if(!CheckInfiniteLoop2Filter(signal)) return false;
-    if(!CheckQuantumState2Filter(signal)) return false;
-    if(!CheckGrandMasterLogicFilter(signal)) return false;
-    if(!CheckAbsoluteZeroFilter(signal)) return false;
-    if(!CheckOmegaSignalFilter(signal)) return false;
-    if(!CheckAlphaEntryFilter(signal)) return false;
-    if(!CheckSingularityFinalFilter(signal)) return false;
-    if(!CheckEventHorizon2Filter(signal)) return false;
-    if(!CheckNebulaCore2Filter(signal)) return false;
-    if(!CheckTheOneFilter(signal)) return false;
+    if(!CheckInfiniteLoop2V31Filter(signal)) return false;
+    if(!CheckQuantumState2V31Filter(signal)) return false;
+    if(!CheckGrandMasterLogicV31Filter(signal)) return false;
+    if(!CheckAbsoluteZeroV31Filter(signal)) return false;
+    if(!CheckOmegaSignalV31Filter(signal)) return false;
+    if(!CheckAlphaEntryV31Filter(signal)) return false;
+    if(!CheckSingularityFinalV31Filter(signal)) return false;
+    if(!CheckEventHorizon2V31Filter(signal)) return false;
+    if(!CheckNebulaCore2V31Filter(signal)) return false;
+    if(!CheckTheOneV31Filter(signal)) return false;
     
     return true;
 }
