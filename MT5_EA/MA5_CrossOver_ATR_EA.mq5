@@ -26,24 +26,21 @@ double GetRSI(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, 
     int handle = iRSI(symbol, tf, period, (ENUM_APPLIED_PRICE)applied_price);
     if(handle == INVALID_HANDLE) return 0;
     double buf[1];
-    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 double GetMA(string symbol, ENUM_TIMEFRAMES tf, int period, int ma_shift, int method, int applied_price, int shift) {
     int handle = iMA(symbol, tf, period, ma_shift, (ENUM_MA_METHOD)method, (ENUM_APPLIED_PRICE)applied_price);
     if(handle == INVALID_HANDLE) return 0;
     double buf[1];
-    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 double GetCCI(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, int shift) {
    int handle = iCCI(symbol, tf, period, (ENUM_APPLIED_PRICE)applied_price);
    if(handle == INVALID_HANDLE) return 0;
    double buf[1];
-   if(CopyBuffer(handle, 0, shift, 1, buf)<0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-   // IndicatorRelease(handle); // Optimized for caching
+   if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
    return buf[0];
 }
 double GetADX(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, int mode, int shift) {
@@ -54,32 +51,28 @@ double GetADX(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, 
     if(mode == MODE_MAIN) bufNum = 0; // 0=MAIN, 1=PLUS, 2=MINUS
     else if(mode == MODE_PLUSDI) bufNum = 1;
     else if(mode == MODE_MINUSDI) bufNum = 2;
-    if(CopyBuffer(handle, bufNum, shift, 1, buf)<0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, bufNum, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 double GetStdDev(string symbol, ENUM_TIMEFRAMES tf, int period, int ma_shift, int method, int applied_price, int shift) {
     int handle = iStdDev(symbol, tf, period, ma_shift, (ENUM_MA_METHOD)method, (ENUM_APPLIED_PRICE)applied_price);
     if(handle == INVALID_HANDLE) return 0;
      double buf[1];
-    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 double GetATR(string symbol, ENUM_TIMEFRAMES tf, int period, int shift) {
     int handle = iATR(symbol, tf, period);
      if(handle == INVALID_HANDLE) return 0;
      double buf[1];
-    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 double GetMFI(string symbol, ENUM_TIMEFRAMES tf, int period, int vol_type, int shift) {
     int handle = iMFI(symbol, tf, period, (ENUM_APPLIED_VOLUME)vol_type);
      if(handle == INVALID_HANDLE) return 0;
      double buf[1];
-    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { // IndicatorRelease(handle); // Optimized for caching return 0; }
-    // IndicatorRelease(handle); // Optimized for caching
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) return 0;
     return buf[0];
 }
 
