@@ -20,6 +20,70 @@ enum ENUM_SIGNAL_TYPE { SIGNAL_NONE=0, SIGNAL_BUY=1, SIGNAL_SELL=2 };
 enum ENUM_ORDER_TYPE_EXT { ORDER_MARKET=0, ORDER_PENDING=1, ORDER_BOTH=2 };
 
 //+------------------------------------------------------------------+
+//| MQL4 COMPATIBILITY HELPERS                                       |
+//+------------------------------------------------------------------+
+double iRSI_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, int shift) {
+    int handle = iRSI(symbol, tf, period, (ENUM_APPLIED_PRICE)applied_price);
+    if(handle == INVALID_HANDLE) return 0;
+    double buf[1];
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+double iMA_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int ma_shift, int method, int applied_price, int shift) {
+    int handle = iMA(symbol, tf, period, ma_shift, (ENUM_MA_METHOD)method, (ENUM_APPLIED_PRICE)applied_price);
+    if(handle == INVALID_HANDLE) return 0;
+    double buf[1];
+    if(CopyBuffer(handle, 0, shift, 1, buf) < 0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+double iCCI_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, int shift) {
+   int handle = iCCI(symbol, tf, period, (ENUM_APPLIED_PRICE)applied_price);
+   if(handle == INVALID_HANDLE) return 0;
+   double buf[1];
+   if(CopyBuffer(handle, 0, shift, 1, buf)<0) { IndicatorRelease(handle); return 0; }
+   IndicatorRelease(handle);
+   return buf[0];
+}
+double iADX_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int applied_price, int mode, int shift) {
+    int handle = iADX(symbol, tf, period);
+    if(handle == INVALID_HANDLE) return 0;
+    double buf[1];
+    int bufNum = 0;
+    if(mode == MODE_MAIN) bufNum = 0; // 0=MAIN, 1=PLUS, 2=MINUS
+    else if(mode == MODE_PLUSDI) bufNum = 1;
+    else if(mode == MODE_MINUSDI) bufNum = 2;
+    if(CopyBuffer(handle, bufNum, shift, 1, buf)<0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+double iStdDev_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int ma_shift, int method, int applied_price, int shift) {
+    int handle = iStdDev(symbol, tf, period, ma_shift, (ENUM_MA_METHOD)method, (ENUM_APPLIED_PRICE)applied_price);
+    if(handle == INVALID_HANDLE) return 0;
+     double buf[1];
+    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+double iATR_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int shift) {
+    int handle = iATR(symbol, tf, period);
+     if(handle == INVALID_HANDLE) return 0;
+     double buf[1];
+    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+double iMFI_MQL4(string symbol, ENUM_TIMEFRAMES tf, int period, int vol_type, int shift) {
+    int handle = iMFI(symbol, tf, period, (ENUM_APPLIED_VOLUME)vol_type);
+     if(handle == INVALID_HANDLE) return 0;
+     double buf[1];
+    if(CopyBuffer(handle, 0, shift, 1, buf)<0) { IndicatorRelease(handle); return 0; }
+    IndicatorRelease(handle);
+    return buf[0];
+}
+
+//+------------------------------------------------------------------+
 //| INPUT PARAMETERS                                                  |
 //+------------------------------------------------------------------+
 input group "=== HEDEF AYARLARI ==="
@@ -1151,8 +1215,8 @@ input bool     InpUseMultiverse    = true;         // Multiverse Kullan
 input int      InpMP_Scenarios     = 10;           // Simulation count
 
 input group "=== ZERO LAG ENGINE ==="
-input bool     InpUseZeroLag       = true;         // Zero Lag Kullan
-input int      InpZL_Period        = 20;           // Lag Compensation Period
+input bool     InpUseZeroLagEngine       = true;         // Zero Lag Kullan
+input int      InpZL_EnginePeriod        = 20;           // Lag Compensation Period
 
 input group "=== OMEGA POINT ==="
 input bool     InpUseOmegaPoint    = true;         // Omega Point Kullan
@@ -1179,7 +1243,7 @@ input bool     InpUseCosmicRad     = true;         // Cosmic Radiation Kullan
 input double   InpCR_NoiseLimit    = 0.1;          // Signal noise threshold
 
 input group "=== INFINITY AI ==="
-input bool     InpUseInfinityAI    = false;        // Infinity AI Kullan
+input bool     InpUseInfinityConf    = false;        // Infinity AI Kullan
 input double   InpIA_Confidence    = 0.999;        // Final gatekeeper threshold
 
 input group "=== BIG BANG ==="
@@ -1259,7 +1323,7 @@ input bool     InpUseHellsFire     = true;         // Hells Fire Kullan
 input double   InpHF_VolExclusion  = 4.0;          // Volatility fire-limit
 
 input group "=== ETERNAL AI ==="
-input bool     InpUseEternalAI     = false;        // Eternal AI Kullan
+input bool     InpUseEternalGate     = false;        // Eternal AI Kullan
 input double   InpEAI_FinalGate    = 0.99;         // The Final Overseer gate
 
 input group "=== ZENITH POINT ==="
@@ -1431,7 +1495,7 @@ input bool     InpUseQuantumState2 = true;         // Quantum State II Kullan
 input double   InpQS2_ProbThreshold= 0.8;          // Superposition probability
 
 input group "=== GRAND MASTER LOGIC ==="
-input bool     InpUseGrandMaster   = true;         // Grand Master Logic Kullan
+input bool     InpUseGrandMasterLogic   = true;         // Grand Master Logic Kullan
 input double   InpGM_WinRatioTarget= 70.0;         // Virtual win ratio floor
 
 input group "=== ABSOLUTE ZERO ==="
@@ -1447,7 +1511,7 @@ input bool     InpUseAlphaEntry    = true;         // Alpha Entry Kullan
 input int      InpAE_MomentumLook  = 10;           // Start of trend lookback
 
 input group "=== SINGULARITY AI ==="
-input bool     InpUseSingularityAI = false;        // Singularity AI Kullan
+input bool     InpUseSingularityFinal = false;        // Singularity AI Kullan
 input double   InpSAI_Convergence  = 0.999;        // All-AI agreement threshold
 
 input group "=== EVENT HORIZON II ==="
@@ -1906,27 +1970,27 @@ int OnInit()
     // Create indicator handles
     ENUM_MA_METHOD maMethod = (ENUM_MA_METHOD)InpMA_Method;
     
-    handleMA1 = iMA(_Symbol, PERIOD_CURRENT, InpMA1_Period, 0, maMethod, InpMA_Price);
-    handleMA2 = iMA(_Symbol, PERIOD_CURRENT, InpMA2_Period, 0, maMethod, InpMA_Price);
-    handleMA3 = iMA(_Symbol, PERIOD_CURRENT, InpMA3_Period, 0, maMethod, InpMA_Price);
-    handleMA4 = iMA(_Symbol, PERIOD_CURRENT, InpMA4_Period, 0, maMethod, InpMA_Price);
-    handleMA5 = iMA(_Symbol, PERIOD_CURRENT, InpMA5_Period, 0, maMethod, InpMA_Price);
-    handleATR = iATR(_Symbol, PERIOD_CURRENT, InpATR_Period);
+    handleMA1 = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpMA1_Period, 0, maMethod, InpMA_Price);
+    handleMA2 = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpMA2_Period, 0, maMethod, InpMA_Price);
+    handleMA3 = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpMA3_Period, 0, maMethod, InpMA_Price);
+    handleMA4 = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpMA4_Period, 0, maMethod, InpMA_Price);
+    handleMA5 = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpMA5_Period, 0, maMethod, InpMA_Price);
+    handleATR = iATR_MQL4(_Symbol, PERIOD_CURRENT, InpATR_Period);
     
     // NEW MODULE INDICATORS
     // RSI
     if(InpUseRSI)
-        handleRSI = iRSI(_Symbol, PERIOD_CURRENT, InpRSI_Period, PRICE_CLOSE);
+        handleRSI = iRSI_MQL4(_Symbol, PERIOD_CURRENT, InpRSI_Period, PRICE_CLOSE);
     
     // Volume
     if(InpUseVolume)
-        handleVolume = iMA(_Symbol, PERIOD_CURRENT, InpVolume_Period, 0, MODE_SMA, VOLUME_TICK);
+        handleVolume = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpVolume_Period, 0, MODE_SMA, VOLUME_TICK);
     
     // Multi-Timeframe
     if(InpUseMTF)
     {
-        handleMTF_MA1 = iMA(_Symbol, InpMTF_Higher, InpMA1_Period, 0, maMethod, InpMA_Price);
-        handleMTF_MA5 = iMA(_Symbol, InpMTF_Higher, InpMA5_Period, 0, maMethod, InpMA_Price);
+        handleMTF_MA1 = iMA_MQL4(_Symbol, InpMTF_Higher, InpMA1_Period, 0, maMethod, InpMA_Price);
+        handleMTF_MA5 = iMA_MQL4(_Symbol, InpMTF_Higher, InpMA5_Period, 0, maMethod, InpMA_Price);
     }
     
     // Initialize all other module indicators
@@ -3797,11 +3861,11 @@ void InitNewIndicators()
         handleStoch = iStochastic(_Symbol, PERIOD_CURRENT, InpStoch_K, InpStoch_D, InpStoch_Slowing, MODE_SMA, STO_LOWHIGH);
     
     // v3 Indicators
-    handleCCI = iCCI(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
-    handleADX = iADX(_Symbol, PERIOD_CURRENT, InpADX_Period);
+    handleCCI = iCCI_MQL4(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
+    handleADX = iADX_MQL4(_Symbol, PERIOD_CURRENT, InpADX_Period);
     handleSAR = iSAR(_Symbol, PERIOD_CURRENT, InpSAR_Step, InpSAR_Max);
     handleWilliams = iWPR(_Symbol, PERIOD_CURRENT, InpWilliams_Period);
-    handleMFI = iMFI(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
+    handleMFI = iMFI_MQL4(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
     handleIchimoku = iIchimoku(_Symbol, PERIOD_CURRENT, InpIchi_Tenkan, InpIchi_Kijun, InpIchi_Senkou);
     
     // Set arrays as series
@@ -4204,7 +4268,7 @@ bool CheckAccountProtection()
 void InitV3Indicators()
 {
     if(InpUseADX)
-        handleADX = iADX(_Symbol, PERIOD_CURRENT, InpADX_Period);
+        handleADX = iADX_MQL4(_Symbol, PERIOD_CURRENT, InpADX_Period);
     
     if(InpUseIchimoku)
         handleIchimoku = iIchimoku(_Symbol, PERIOD_CURRENT, InpIchi_Tenkan, InpIchi_Kijun, InpIchi_Senkou);
@@ -4213,13 +4277,13 @@ void InitV3Indicators()
         handleSAR = iSAR(_Symbol, PERIOD_CURRENT, InpSAR_Step, InpSAR_Max);
     
     if(InpUseCCI)
-        handleCCI = iCCI(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
+        handleCCI = iCCI_MQL4(_Symbol, PERIOD_CURRENT, InpCCI_Period, PRICE_TYPICAL);
     
     if(InpUseWilliams)
         handleWilliams = iWPR(_Symbol, PERIOD_CURRENT, InpWilliams_Period);
     
     if(InpUseMFI)
-        handleMFI = iMFI(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
+        handleMFI = iMFI_MQL4(_Symbol, PERIOD_CURRENT, InpMFI_Period, VOLUME_TICK);
     
     // Set arrays as series
     ArraySetAsSeries(adxValue, true);
@@ -9305,9 +9369,9 @@ bool CheckPremDiscFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Infinity AI Filter                                               |
 //+------------------------------------------------------------------+
-bool CheckInfinityAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckInfinityConfFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseInfinityAI)
+    if(!InpUseInfinityConf)
         return true;
     
     // Ultimate neural network scoring
@@ -9658,9 +9722,9 @@ bool CheckTimePriceFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Eternal AI Filter                                                |
 //+------------------------------------------------------------------+
-bool CheckEternalAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckEternalGateFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseEternalAI)
+    if(!InpUseEternalGate)
         return true;
     
     // Ultimate deep learning scoring
@@ -10999,7 +11063,7 @@ bool CheckSupernovaFilter(ENUM_SIGNAL_TYPE signal)
     // Volatility Explosion
     double currentATR = atr[0];
     double avgATR = 0;
-    for(int i = 1; i <= 20; i++) avgATR += iATR(_Symbol, PERIOD_CURRENT, i); // Approximate access if buffer not avail, assumes buffer
+    for(int i = 1; i <= 20; i++) avgATR += iATR_MQL4(_Symbol, PERIOD_CURRENT, i); // Approximate access if buffer not avail, assumes buffer
     // Re-use atr array if possible or assume volatility expansion based on range
     
     // Simplified using price range vs average range
@@ -11221,9 +11285,9 @@ bool CheckTimeDilationFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Singularity AI Filter                                            |
 //+------------------------------------------------------------------+
-bool CheckSingularityAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckSingularityFinalFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseSingularityAI)
+    if(!InpUseSingularityFinal)
         return true;
     
     // The Final Aggregation
@@ -11904,13 +11968,13 @@ bool CheckMultiverseFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Zero Lag Engine Filter                                           |
 //+------------------------------------------------------------------+
-bool CheckZeroLagFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckZeroLagEngineFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseZeroLag)
+    if(!InpUseZeroLagEngine)
         return true;
     
     // Zero Lag EMA logic
-    double ema = iMA(_Symbol, PERIOD_CURRENT, InpZL_Period, 0, MODE_EMA, PRICE_CLOSE);
+    double ema = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpZL_EnginePeriod, 0, MODE_EMA, PRICE_CLOSE);
     double lagComp = iClose(_Symbol, PERIOD_CURRENT, 0) + (iClose(_Symbol, PERIOD_CURRENT, 0) - iClose(_Symbol, PERIOD_CURRENT, InpZL_Period));
     
     zlZeroLagVal = lagComp - ema;
@@ -12041,9 +12105,9 @@ bool CheckCosmicRadFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Infinity AI Filter                                               |
 //+------------------------------------------------------------------+
-bool CheckInfinityAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckInfinityConfFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseInfinityAI)
+    if(!InpUseInfinityConf)
         return true;
     
     // Master Sentinel Logic
@@ -12063,14 +12127,14 @@ bool ApplyV24Filters(ENUM_SIGNAL_TYPE signal)
 {
     if(!CheckInfiniteLoopFilter(signal)) return false;
     if(!CheckMultiverseFilter(signal)) return false;
-    if(!CheckZeroLagFilter(signal)) return false;
+    if(!CheckZeroLagEngineFilter(signal)) return false;
     if(!CheckOmegaPointFilter(signal)) return false;
     if(!CheckAlphaOmegaFilter(signal)) return false;
     if(!CheckDeepSpaceFilter(signal)) return false;
     if(!CheckEHProFilter(signal)) return false;
     if(!CheckNebulaCoreFilter(signal)) return false;
     if(!CheckCosmicRadFilter(signal)) return false;
-    if(!CheckInfinityAIFilter(signal)) return false;
+    if(!CheckInfinityConfFilter(signal)) return false;
     
     return true;
 }
@@ -12548,8 +12612,8 @@ bool CheckApexPredatorFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Predator strength: ADX + RSI confirmation
-    double adx = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
-    double rsiVal = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double adx = iADX_MQL4(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
+    double rsiVal = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
     
     apPredatorScore = (adx / 100.0) * (MathAbs(rsiVal - 50.0) / 50.0);
     
@@ -12602,7 +12666,7 @@ bool CheckPolarisFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Anchor trend check
-    double anchorMA = iMA(_Symbol, PERIOD_CURRENT, InpPS_TrueNorth, 0, MODE_SMA, PRICE_CLOSE);
+    double anchorMA = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpPS_TrueNorth, 0, MODE_SMA, PRICE_CLOSE);
     psPolarisAnchor = iClose(_Symbol, PERIOD_CURRENT, 0) - anchorMA;
     
     if(signal == SIGNAL_BUY && psPolarisAnchor < 0) return false;
@@ -12745,9 +12809,9 @@ bool CheckHellsFireFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Eternal AI Filter                                                |
 //+------------------------------------------------------------------+
-bool CheckEternalAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckEternalGateFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseEternalAI)
+    if(!InpUseEternalGate)
         return true;
     
     // The Final Sentinel
@@ -12774,7 +12838,7 @@ bool ApplyV26Filters(ENUM_SIGNAL_TYPE signal)
     if(!CheckKarmaFilter(signal)) return false;
     if(!CheckHeavensGateFilter(signal)) return false;
     if(!CheckHellsFireFilter(signal)) return false;
-    if(!CheckEternalAIFilter(signal)) return false;
+    if(!CheckEternalGateFilter(signal)) return false;
     
     return true;
 }
@@ -12866,7 +12930,7 @@ bool CheckStealthEntryFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Only enter when volatility is low (Quiet before the storm)
-    stStealthActive = atr[0] < (iATR(_Symbol, PERIOD_CURRENT, 100, 0) * InpST_VolatilityCap);
+    stStealthActive = atr[0] < (iATR_MQL4(_Symbol, PERIOD_CURRENT, 100, 0) * InpST_VolatilityCap);
     
     if(!stStealthActive && InpST_VolatilityCap < 1.0)
         return false; 
@@ -12883,8 +12947,8 @@ bool CheckFalconDiveFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // RSI Oversold recovery check
-    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
-    double rsi1 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 5);
+    double rsi0 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi1 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 5);
     
     fdFalconDropVal = rsi1 - rsi0;
     
@@ -12903,8 +12967,8 @@ bool CheckSharkFinFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // RSI Shark Fin (Divergence style)
-    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
-    double rsi2 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 2);
+    double rsi0 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi2 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 2);
     
     sfSharkFinDiv = rsi0 - rsi2;
     
@@ -12923,7 +12987,7 @@ bool CheckEagleVisionFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Higher TF RSI check
-    double rsiH4 = iRSI(_Symbol, InpEV_Timeframe, 14, PRICE_CLOSE, 0);
+    double rsiH4 = iRSI_MQL4(_Symbol, InpEV_Timeframe, 14, PRICE_CLOSE, 0);
     evEagleEyeScore = rsiH4;
     
     if(signal == SIGNAL_BUY && rsiH4 < 45) return false;
@@ -13035,7 +13099,7 @@ bool CheckPathfinderFlowFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Distance from slow MA
-    double slowMA = iMA(_Symbol, PERIOD_CURRENT, InpPF_SlowPeriod, 0, MODE_SMA, PRICE_CLOSE);
+    double slowMA = iMA_MQL4(_Symbol, PERIOD_CURRENT, InpPF_SlowPeriod, 0, MODE_SMA, PRICE_CLOSE);
     pfPathfinderScore = (iClose(_Symbol, PERIOD_CURRENT, 0) - slowMA);
     
     if(signal == SIGNAL_BUY && pfPathfinderScore < 0) return false;
@@ -13074,7 +13138,7 @@ bool CheckRelayStationFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Long-term Weekly trend
-    double rsiW1 = iRSI(_Symbol, InpRS_Timeframe, 14, PRICE_CLOSE, 0);
+    double rsiW1 = iRSI_MQL4(_Symbol, InpRS_Timeframe, 14, PRICE_CLOSE, 0);
     rsRelayTrend = rsiW1;
     
     if(signal == SIGNAL_BUY && rsiW1 < 48) return false;
@@ -13205,7 +13269,7 @@ bool CheckTitanStrengthFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Absolute momentum force
-    double force = iMA(_Symbol, PERIOD_CURRENT, 1, 0, MODE_SMA, PRICE_CLOSE) - iMA(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE);
+    double force = iMA_MQL4(_Symbol, PERIOD_CURRENT, 1, 0, MODE_SMA, PRICE_CLOSE) - iMA_MQL4(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE);
     tsTitanForce = force / (atr[0] > 0 ? atr[0] : 1);
     
     if(signal == SIGNAL_BUY && tsTitanForce < 0.5) return false;
@@ -13320,8 +13384,8 @@ bool CheckGaiaBreathFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Simple sentiment approximation
-    double rsi14 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
-    double rsi7 = iRSI(_Symbol, PERIOD_CURRENT, 7, PRICE_CLOSE, 0);
+    double rsi14 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi7 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 7, PRICE_CLOSE, 0);
     
     gbGaiaSentiment = (rsi14 + rsi7) / 200.0;
     
@@ -13341,9 +13405,9 @@ bool CheckHydraHeadFilter(ENUM_SIGNAL_TYPE signal)
     
     // Multi-indicator consensus
     hhHydraCount = 0;
-    if(iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0) > 50) hhHydraCount++;
-    if(iCCI(_Symbol, PERIOD_CURRENT, 14, PRICE_TYPICAL, 0) > 0) hhHydraCount++;
-    if(iMFI(_Symbol, PERIOD_CURRENT, 14, 0) > 50) hhHydraCount++;
+    if(iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0) > 50) hhHydraCount++;
+    if(iCCI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_TYPICAL, 0) > 0) hhHydraCount++;
+    if(iMFI_MQL4(_Symbol, PERIOD_CURRENT, 14, 0) > 50) hhHydraCount++;
     
     if(signal == SIGNAL_BUY && hhHydraCount < InpHH_Consensus) return false;
     if(signal == SIGNAL_SELL && hhHydraCount > (3 - InpHH_Consensus)) return false;
@@ -13360,7 +13424,7 @@ bool CheckPhoenixRebirthFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Recovery from exhaustion
-    double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
     prPhoenixScore = rsi;
     
     if(signal == SIGNAL_BUY && rsi < InpPR_ReversalPoint) return true; // Buying the rebirth
@@ -13422,8 +13486,8 @@ bool CheckInfiniteLoop2Filter(ENUM_SIGNAL_TYPE signal)
     bool match = true;
     for(int i = 1; i <= InpIL2_RecheckBars; i++)
     {
-        double fast = iMA(_Symbol, PERIOD_CURRENT, 5, 0, MODE_SMA, PRICE_CLOSE, i);
-        double slow = iMA(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, i);
+        double fast = iMA_MQL4(_Symbol, PERIOD_CURRENT, 5, 0, MODE_SMA, PRICE_CLOSE, i);
+        double slow = iMA_MQL4(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, i);
         if(signal == SIGNAL_BUY && fast < slow) { match = false; break; }
         if(signal == SIGNAL_SELL && fast > slow) { match = false; break; }
     }
@@ -13442,8 +13506,8 @@ bool CheckQuantumState2Filter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Superposition: RSI on Current vs Higher TF
-    double rsi0 = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
-    double rsi1 = iRSI(_Symbol, PERIOD_H1, 14, PRICE_CLOSE, 0);
+    double rsi0 = iRSI_MQL4(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE, 0);
+    double rsi1 = iRSI_MQL4(_Symbol, PERIOD_H1, 14, PRICE_CLOSE, 0);
     
     qs2QuantumProb = (MathAbs(rsi0 - 50.0) + MathAbs(rsi1 - 50.0)) / 100.0;
     
@@ -13456,9 +13520,9 @@ bool CheckQuantumState2Filter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Grand Master Logic Filter                                        |
 //+------------------------------------------------------------------+
-bool CheckGrandMasterFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckGrandMasterLogicFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseGrandMaster)
+    if(!InpUseGrandMasterLogic)
         return true;
     
     // Probability floor based on virtual equity
@@ -13497,7 +13561,7 @@ bool CheckOmegaSignalFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // End of trend signal: StdDev spike
-    double sd = iStdDev(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, 0);
+    double sd = iStdDev_MQL4(_Symbol, PERIOD_CURRENT, 20, 0, MODE_SMA, PRICE_CLOSE, 0);
     osOmegaEndScore = sd / (atr[0] > 0 ? atr[0] : 1);
     
     if(osOmegaEndScore > InpOS_TrendEndSD) // Extreme volatility spike often ends the trend
@@ -13515,8 +13579,8 @@ bool CheckAlphaEntryFilter(ENUM_SIGNAL_TYPE signal)
         return true;
     
     // Start of trend check: Low ADX turning up
-    double adx0 = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
-    double adx1 = iADX(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, InpAE_MomentumLook);
+    double adx0 = iADX_MQL4(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, 0);
+    double adx1 = iADX_MQL4(_Symbol, PERIOD_CURRENT, 14, 0, MODE_MAIN, InpAE_MomentumLook);
     
     aeAlphaStartScore = adx0 - adx1;
     
@@ -13528,9 +13592,9 @@ bool CheckAlphaEntryFilter(ENUM_SIGNAL_TYPE signal)
 //+------------------------------------------------------------------+
 //| Singularity AI Filter                                            |
 //+------------------------------------------------------------------+
-bool CheckSingularityAIFilter(ENUM_SIGNAL_TYPE signal)
+bool CheckSingularityFinalFilter(ENUM_SIGNAL_TYPE signal)
 {
-    if(!InpUseSingularityAI)
+    if(!InpUseSingularityFinal)
         return true;
     
     // Total AI Unity
@@ -13605,14 +13669,16 @@ bool ApplyV31Filters(ENUM_SIGNAL_TYPE signal)
 {
     if(!CheckInfiniteLoop2Filter(signal)) return false;
     if(!CheckQuantumState2Filter(signal)) return false;
-    if(!CheckGrandMasterFilter(signal)) return false;
+    if(!CheckGrandMasterLogicFilter(signal)) return false;
     if(!CheckAbsoluteZeroFilter(signal)) return false;
     if(!CheckOmegaSignalFilter(signal)) return false;
     if(!CheckAlphaEntryFilter(signal)) return false;
-    if(!CheckSingularityAIFilter(signal)) return false;
+    if(!CheckSingularityFinalFilter(signal)) return false;
     if(!CheckEventHorizon2Filter(signal)) return false;
     if(!CheckNebulaCore2Filter(signal)) return false;
     if(!CheckTheOneFilter(signal)) return false;
     
     return true;
 }
+
+
